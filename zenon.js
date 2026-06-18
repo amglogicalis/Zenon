@@ -450,15 +450,17 @@ async function callProviderModel(entry, mode, systemInstruction, prompt, enableG
     return await callGeminiModel(apiKey, model, mode, systemInstruction, prompt, enableGrounding);
   }
 
-  // 2. Cohere API
+  // 2. Cohere API V2
   if (provider === 'cohere') {
-    const url = 'https://api.cohere.com/v1/chat';
+    const url = 'https://api.cohere.com/v2/chat';
     const body = {
-      message: prompt,
-      preamble: systemInstruction,
-      model: model
+      model: model,
+      messages: [
+        { role: 'system', content: systemInstruction },
+        { role: 'user', content: prompt }
+      ]
     };
-    if (mode.toLowerCase() === 'correct') {
+    if (mode.toLowerCase() === 'correct' || mode.toLowerCase() === 'objective') {
       body.response_format = { type: 'json_object' };
     }
 
@@ -479,7 +481,10 @@ async function callProviderModel(entry, mode, systemInstruction, prompt, enableG
     }
 
     const data = await response.json();
-    return data.text;
+    if (data.message && data.message.content && data.message.content.length > 0) {
+      return data.message.content[0].text;
+    }
+    throw new Error('Cohere V2 API returned an empty or invalid message content.');
   }
 
   // 3. Proveedores compatibles con formato OpenAI (Groq, DeepSeek, OpenRouter)
