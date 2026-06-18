@@ -1,6 +1,44 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const crypto = require('crypto');
+
+// =============================================================================
+// PASO 2: Autoentrenamiento y Aprendizaje Contextual (Caché & Grounding)
+// =============================================================================
+const CACHE_FILE = path.join(process.cwd(), '.zenon_cache.json');
+
+// Calcula una firma SHA-256 del estado actual del repositorio
+function computeFingerprint(files) {
+  const fileData = files.map(file => {
+    try {
+      const stats = fs.statSync(file);
+      return `${file}:${stats.size}:${stats.mtimeMs}`;
+    } catch (e) {
+      return `${file}:0:0`;
+    }
+  }).sort().join('|');
+
+  return crypto.createHash('sha256').update(fileData).digest('hex');
+}
+
+// Asegura que .zenon_cache.json esté registrado en el .gitignore local
+function ensureGitignore() {
+  const gitignorePath = path.join(process.cwd(), '.gitignore');
+  try {
+    let content = '';
+    if (fs.existsSync(gitignorePath)) {
+      content = fs.readFileSync(gitignorePath, 'utf8');
+    }
+    if (!content.includes('.zenon_cache.json')) {
+      const separator = content.endsWith('\n') || content === '' ? '' : '\n';
+      fs.appendFileSync(gitignorePath, `${separator}.zenon_cache.json\n`, 'utf8');
+      console.log('ℹ️  Agregado .zenon_cache.json al archivo .gitignore');
+    }
+  } catch (e) {
+    // Continuar en silencio si no se puede modificar
+  }
+}
 
 // =============================================================================
 // PASO 1: Cadena de Fallback de Modelos con Backoff Exponencial
@@ -180,11 +218,16 @@ function sleep(ms) {
 }
 
 // Build the Gemini request body for a given mode
-function buildRequestBody(mode, systemInstruction, prompt) {
+function buildRequestBody(mode, systemInstruction, prompt, model, enableGrounding = false) {
   const body = {
     systemInstruction: { parts: [{ text: systemInstruction }] },
     contents: [{ parts: [{ text: prompt }] }]
   };
+
+  // Habilitar Google Search Grounding si el modelo lo soporta (gemini-*)
+  if (enableGrounding && model.toLowerCase().includes('gemini')) {
+    body.tools = [{ googleSearch: {} }];
+  }
 
   if (mode.toLowerCase() === 'correct') {
     body.generationConfig = {
@@ -224,10 +267,10 @@ function buildRequestBody(mode, systemInstruction, prompt) {
 }
 
 // Single model call — throws with statusCode property on HTTP errors
-async function callGeminiModel(apiKey, model, mode, systemInstruction, prompt) {
+async function callGeminiModel(apiKey, model, mode, systemInstruction, prompt, enableGrounding = false) {
   const apiBase = process.env.GEMINI_API_BASE_URL || 'https://generativelanguage.googleapis.com';
   const url = `${apiBase}/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  const requestBody = buildRequestBody(mode, systemInstruction, prompt);
+  const requestBody = buildRequestBody(mode, systemInstruction, prompt, model, enableGrounding);
 
   const response = await fetch(url, {
     method: 'POST',
@@ -262,7 +305,7 @@ async function callGeminiModel(apiKey, model, mode, systemInstruction, prompt) {
 //   - 5xx (server error)    → next model immediately
 //   - Other errors          → next model immediately
 // =============================================================================
-async function callWithFallback(apiKey, mode, systemInstruction, prompt) {
+async function callWithFallback(apiKey, mode, systemInstruction, prompt, enableGrounding = false) {
   let lastError;
 
   for (let i = 0; i < GEMINI_MODEL_CHAIN.length; i++) {
@@ -276,7 +319,7 @@ async function callWithFallback(apiKey, mode, systemInstruction, prompt) {
         console.log(`  Using primary model: ${model}`);
       }
 
-      const result = await callGeminiModel(apiKey, model, mode, systemInstruction, prompt);
+      const result = await callGeminiModel(apiKey, model, mode, systemInstruction, prompt, enableGrounding);
       if (i > 0) {
         console.log(`  ✅ Fallback succeeded with model: ${model}`);
       }
@@ -460,14 +503,75 @@ async function main() {
 
   console.log(`Total codebase size: ${(totalSize / 1024).toFixed(2)} KB | Engine: ${mode === 'correct' ? 'precision' : 'analysis'} mode`);
 
+  // =============================================================================
+  // PASO 2: Autoentrenamiento y Carga de Conocimiento Contextual (Caché & Grounding)
+  // =============================================================================
+  const fingerprint = computeFingerprint(files);
+  let cachedKnowledge = '';
+  let cacheLoaded = false;
+
+  if (fs.existsSync(CACHE_FILE)) {
+    try {
+      const cacheData = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+      if (cacheData.fingerprint === fingerprint && cacheData.knowledge) {
+        cachedKnowledge = cacheData.knowledge;
+        cacheLoaded = true;
+        console.log('ℹ️  Cargada base de conocimiento contextual desde la caché (.zenon_cache.json)');
+      }
+    } catch (e) {
+      console.log('ℹ️  No se pudo leer la caché o está corrupta. Iniciando re-entrenamiento...');
+    }
+  }
+
+  if (!cacheLoaded) {
+    console.log('🧠 Base de conocimiento no encontrada o desactualizada. Iniciando autoentrenamiento...');
+    ensureGitignore();
+
+    const trainingSystemInstruction = `You are "Zenon", a codebase architect.
+Your task is to analyze the user's repository files and build a comprehensive profile of the codebase.
+Identify:
+1. The main programming languages, packages, and frameworks used.
+2. The architectural design patterns, folder structure, and entry points.
+3. Crucial third-party APIs, libraries, and external services integrated.
+4. Any custom conventions, mechanisms, or coding styles used in the project.
+
+Use your Google Search tool to search for best practices, documentation, and known issues related to the specific technologies and libraries used in this repository.
+Provide a clear, concise, and structured summary of your findings. This summary will be cached and used by Zenon to guide code reviews and corrections.`;
+
+    const trainingUserPrompt = `Here are the codebase files for training:\n\n${codebasePayload}\n\nAnalyze this codebase, perform searches on the integrated technologies to verify current best practices, and return the learned project knowledge profile.`;
+
+    try {
+      console.log('🔍 Realizando búsquedas y autoentrenamiento...');
+      // Activamos enableGrounding = true para usar Google Search durante el entrenamiento
+      cachedKnowledge = await callWithFallback(apiKey, 'assist', trainingSystemInstruction, trainingUserPrompt, true);
+      
+      // Guardar en caché
+      fs.writeFileSync(CACHE_FILE, JSON.stringify({
+        fingerprint: fingerprint,
+        knowledge: cachedKnowledge,
+        updatedAt: new Date().toISOString()
+      }, null, 2), 'utf8');
+      
+      console.log('✅ Autoentrenamiento completado con éxito. Guardado en .zenon_cache.json');
+    } catch (err) {
+      console.warn('⚠️  Error durante el autoentrenamiento:', err.message);
+      console.log('Continuando con el análisis directo sin base de conocimiento...');
+    }
+  }
+
   // Prompt logic
   const isCorrectMode = mode === 'correct';
   
-  const systemInstruction = `You are "Zenon", a highly capable AI assistant for code analysis and review.\nYou analyze the user's project files, find bugs, vulnerabilities, performance regressions, syntax errors, and architectural flaws, and resolve them.\nYou must adapt your output to the requested mode:\n\n${isCorrectMode ? 
+  let systemInstruction = `You are "Zenon", a highly capable AI assistant for code analysis and review.\nYou analyze the user's project files, find bugs, vulnerabilities, performance regressions, syntax errors, and architectural flaws, and resolve them.\nYou must adapt your output to the requested mode:\n\n${isCorrectMode ? 
   `MODE: CORRECT\n  Analyze the codebase, detect bugs, poor patterns, syntax errors, or logical mistakes.\n  Provide corrected versions of the files.\n  You MUST return a JSON object listing files that need corrections.\n  Always return the FULL file content in the 'content' field. Do not truncate the code, do not add comments like '// ... rest of the file stays same'. You must provide a clean drop-in replacement.\n  Do not include files that do not need changes.`
   : 
   `MODE: ASSIST\n  Analyze the codebase, detect bugs, security issues, performance bottlenecks, and design/cleanliness issues.\n  Generate a helpful and detailed Markdown report with your findings.\n  Use clear sections:\n  - 🛠️ Bugs and Functional Issues\n  - 🔒 Security Vulnerabilities\n  - ⚡ Performance Improvements\n  - 🧼 Code Cleanliness and Best Practices\n  For each recommendation, give a clear explanation and code snippets indicating how to apply it.`
 }`;
+
+  // Inyectar el conocimiento adquirido al systemInstruction principal
+  if (cachedKnowledge) {
+    systemInstruction += `\n\n=== APRENDIZAJE CONTEXTUAL DEL REPOSITORIO (AUTOENTRENADO) ===\n${cachedKnowledge}\n=============================================================`;
+  }
 
   const userPrompt = `Here is the codebase files:\n  \n${codebasePayload}\n\nAnalyze these files and perform the requested actions for mode: ${mode.toUpperCase()}.\n${isCorrectMode ? 'Return the files schema JSON.' : 'Return the Markdown code review report.'}`;
 
