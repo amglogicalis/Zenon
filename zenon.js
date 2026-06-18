@@ -144,55 +144,71 @@ function buildExecutionChain(keys, stackInfo, totalSize) {
     }
   };
 
-  const addAllModelsOf = (provider) => {
-    if (keys[provider] && PROVIDERS[provider]) {
-      for (const m of PROVIDERS[provider].models) {
-        addModel(provider, m);
-      }
-    }
+  // Ayudantes para obtener el modelo en un índice específico de PROVIDERS
+  const getModelAt = (provider, index) => {
+    return PROVIDERS[provider] && PROVIDERS[provider].models[index];
   };
 
-  // 1. Añadir el modelo óptimo según tamaño de repo y lenguaje dominante
-  if (isLargeRepo) {
-    // Si el repositorio es grande, priorizamos Gemini y Cohere. Excluimos Groq por completo
-    // ya que su gateway HTTP rechazará prompts grandes con 413 (límite físico de 4MB o tokens).
-    addAllModelsOf('gemini');
-    addAllModelsOf('cohere');
-  } else if (isMediumRepo) {
-    // Si el repositorio es mediano (30 KB - 150 KB), priorizamos Gemini y Cohere.
-    // Relegamos Groq al final porque su cuota de TPM en cuentas gratuitas (12.000 tokens) es muy baja.
-    addAllModelsOf('gemini');
-    addAllModelsOf('cohere');
-  } else if (stackInfo.dominant === 'python' || stackInfo.dominant === 'go') {
-    // Para repos pequeños de Python y Go
-    addAllModelsOf('groq');
-    addAllModelsOf('gemini');
-  } else {
-    // Por defecto para repos pequeños
-    addAllModelsOf('gemini');
-    addAllModelsOf('groq');
+  // Fase 1: Modelos Insignia (Los mejores para cada tarea)
+  // Siempre ponemos Gemini-2.5-Flash al principio por su ventana de contexto masiva.
+  addModel('gemini', 'gemini-2.5-flash');
+
+  // Alternamos los modelos insignia de los demás proveedores
+  if (keys['cohere']) {
+    addModel('cohere', getModelAt('cohere', 0)); // command-a-plus-05-2026
+  }
+  
+  if (!isLargeRepo && keys['groq']) {
+    addModel('groq', getModelAt('groq', 0)); // llama-3.3-70b-versatile
   }
 
-  // 2. Capas de respaldo secundarias para garantizar 100% de tolerancia a fallos
-  addAllModelsOf('gemini');
-  addAllModelsOf('cohere');
+  // Fase 2: Fallbacks de Nivel Medio (Alta disponibilidad y velocidad)
+  addModel('gemini', 'gemini-flash-lite-latest');
   
-  if (!isLargeRepo) {
-    addAllModelsOf('groq');
-    addAllModelsOf('openrouter');
-  } else {
-    // Si es grande, OpenRouter tiene modelos que pueden soportarlo si la cuota lo permite
-    addAllModelsOf('openrouter');
+  if (keys['cohere']) {
+    addModel('cohere', getModelAt('cohere', 1)); // command-r-plus-08-2024
   }
+
+  if (!isLargeRepo && keys['groq']) {
+    addModel('groq', getModelAt('groq', 1)); // llama-4-scout
+  }
+
+  if (keys['openrouter']) {
+    addModel('openrouter', getModelAt('openrouter', 0)); // cohere/north-mini-code:free
+    addModel('openrouter', getModelAt('openrouter', 1)); // qwen3-coder:free
+  }
+
+  // Fase 3: Fallbacks de Nivel Bajo y Último Recurso
+  addModel('gemini', 'gemini-3.1-flash-lite');
+  
+  if (keys['cohere']) {
+    addModel('cohere', getModelAt('cohere', 2)); // command-a-03-2025
+    addModel('cohere', getModelAt('cohere', 3)); // command-r-08-2024
+  }
+
+  if (!isLargeRepo && keys['groq']) {
+    addModel('groq', getModelAt('groq', 2)); // qwen3.6-27b
+    addModel('groq', getModelAt('groq', 3)); // llama-3.1-8b-instant
+  }
+
+  if (keys['openrouter']) {
+    addModel('openrouter', getModelAt('openrouter', 2)); // gemma-4-31b-it:free
+    addModel('openrouter', getModelAt('openrouter', 3)); // llama-3.3-70b-instruct:free
+    addModel('openrouter', getModelAt('openrouter', 4)); // gemini-3.1-flash-lite
+  }
+
+  addModel('gemini', 'gemma-4-31b-it');
 
   // Filtrar duplicados en la cadena (manteniendo el primer orden de prioridad)
   const seen = new Set();
   const uniqueChain = [];
   for (const entry of chain) {
-    const uniqueKey = `${entry.provider}:${entry.model}`;
-    if (!seen.has(uniqueKey)) {
-      seen.add(uniqueKey);
-      uniqueChain.push(entry);
+    if (entry.model) { // Evitar modelos indefinidos si el índice no existe
+      const uniqueKey = `${entry.provider}:${entry.model}`;
+      if (!seen.has(uniqueKey)) {
+        seen.add(uniqueKey);
+        uniqueChain.push(entry);
+      }
     }
   }
 
@@ -566,7 +582,11 @@ async function callWithFallback(chain, mode, systemInstruction, prompt, enableGr
       if (i > 0) {
         console.log(`  ✅ Fallback exitoso con modelo: ${modelLabel}`);
       }
-      return result;
+      return {
+        text: result,
+        provider: entry.provider,
+        model: entry.model
+      };
 
       } catch (err) {
         lastError = err;
@@ -782,6 +802,7 @@ async function main() {
   const chain = buildExecutionChain(keys, stackInfo, totalSize);
   console.log(`Dominant stack detected: ${stackInfo.dominant.toUpperCase()}`);
   console.log(`Execution chain: ${chain.map(c => `${c.provider.toUpperCase()}:${c.model}`).join(' → ')}`);
+  console.log(`🤖 IA Principal elegida para tu stack: [${chain[0].provider.toUpperCase()}] ${chain[0].model}`);
 
   if (chain.length === 0) {
     console.error('❌ Ninguno de los proveedores configurados coincide con los modelos disponibles.');
@@ -844,7 +865,8 @@ Provide a clear, concise, and structured summary of your findings. This summary 
     try {
       console.log('🔍 Realizando búsquedas y autoentrenamiento...');
       // Activamos enableGrounding = true para usar Google Search durante el entrenamiento
-      cachedKnowledge = await callWithFallback(chain, 'assist', trainingSystemInstruction, trainingUserPrompt, true);
+      const trainingResult = await callWithFallback(chain, 'assist', trainingSystemInstruction, trainingUserPrompt, true);
+      cachedKnowledge = trainingResult.text;
       
       // Guardar en caché
       fs.writeFileSync(CACHE_FILE, JSON.stringify({
@@ -853,7 +875,7 @@ Provide a clear, concise, and structured summary of your findings. This summary 
         updatedAt: new Date().toISOString()
       }, null, 2), 'utf8');
       
-      console.log('✅ Autoentrenamiento completado con éxito. Guardado en .zenon_cache.json');
+      console.log(`✅ Autoentrenamiento completado con éxito utilizando la IA: [${trainingResult.provider.toUpperCase()}] ${trainingResult.model}. Guardado en .zenon_cache.json`);
     } catch (err) {
       console.warn('⚠️  Error durante el autoentrenamiento:', err.message);
       console.log('Continuando con el análisis directo sin base de conocimiento...');
@@ -909,8 +931,9 @@ Your job is to:
   try {
     // Objective mode reuses the 'correct' JSON schema (files array) for output
     const callMode = isObjectiveMode ? 'correct' : mode;
-    const rawResponse = await callWithFallback(chain, callMode, systemInstruction, userPrompt);
-    console.log('Analysis complete.');
+    const analysisResult = await callWithFallback(chain, callMode, systemInstruction, userPrompt);
+    const rawResponse = analysisResult.text;
+    console.log(`\n✅ Análisis completado con éxito utilizando la IA: [${analysisResult.provider.toUpperCase()}] ${analysisResult.model}`);
 
     if (isCorrectMode || isObjectiveMode) {
       let result;
