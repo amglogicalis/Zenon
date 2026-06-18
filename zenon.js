@@ -48,30 +48,38 @@ const PROVIDERS = {
     keyName: 'ZENON_API_KEY',
     alternateKeyName: 'GEMINI_API_KEY',
     models: [
-      'gemini-2.5-flash',       // Principal  — contexto grande, óptimo para código
-      'gemini-flash-lite-latest', // Fallback 1 — ultraligero, alta disponibilidad
-      'gemini-3.1-flash-lite',  // Fallback 2 — versión actualizada del modelo ligero
-      'gemma-4-31b-it'          // Fallback 3 — modelo instructivo abierto, último recurso
+      'gemini-2.5-flash',         // Principal  — contexto grande, óptimo para código
+      'gemini-flash-lite-latest',   // Fallback 1 — ultraligero, alta disponibilidad
+      'gemini-3.1-flash-lite',    // Fallback 2 — versión actualizada del modelo ligero
+      'gemma-4-31b-it'            // Fallback 3 — modelo instructivo abierto, último recurso
     ]
   },
   groq: {
     keyName: 'GROQ_API_KEY',
     models: [
-      'llama-3.3-70b-versatile', // Gran capacidad y velocidad extrema
-      'mixtral-8x7b-32768'       // Buen fallback para tareas estructuradas
+      'llama-3.3-70b-versatile',                  // Gran capacidad y velocidad
+      'meta-llama/llama-4-scout-17b-16e-instruct', // Llama 4 en Groq
+      'qwen/qwen3.6-27b',                         // Qwen 3.6 de excelente potencia
+      'llama-3.1-8b-instant'                      // Rápido, alta disponibilidad TPM
     ]
   },
   cohere: {
     keyName: 'COHERE_API_KEY',
     models: [
-      'command-a-plus',          // Flagship actual para agentes y código
-      'command'                  // Clásico multipropósito ultra-estable de Cohere
+      'command-a-plus-05-2026',  // Flagship actual para agentes y código en Cohere
+      'command-r-plus-08-2024',  // Flagship anterior ultra-estable con contexto de 128k
+      'command-a-03-2025',       // Versión estable intermedia
+      'command-r-08-2024'        // Ligero, rápido y de cuota más permisiva
     ]
   },
   openrouter: {
     keyName: 'OPENROUTER_API_KEY',
     models: [
-      'meta-llama/llama-3.3-70b-instruct:free' // Llama 3.3 70B gratuito
+      'cohere/north-mini-code:free',              // Especializado en código, gratuito
+      'qwen/qwen3-coder:free',                    // Qwen Coder gratuito
+      'google/gemma-4-31b-it:free',               // Gemma 4 gratuito
+      'meta-llama/llama-3.3-70b-instruct:free',   // Llama 3.3 70B gratuito
+      'google/gemini-3.1-flash-lite'              // Gemini Lite en OpenRouter
     ]
   }
 };
@@ -136,46 +144,46 @@ function buildExecutionChain(keys, stackInfo, totalSize) {
     }
   };
 
+  const addAllModelsOf = (provider) => {
+    if (keys[provider] && PROVIDERS[provider]) {
+      for (const m of PROVIDERS[provider].models) {
+        addModel(provider, m);
+      }
+    }
+  };
+
   // 1. Añadir el modelo óptimo según tamaño de repo y lenguaje dominante
   if (isLargeRepo) {
     // Si el repositorio es grande, priorizamos Gemini y Cohere. Excluimos Groq por completo
     // ya que su gateway HTTP rechazará prompts grandes con 413 (límite físico de 4MB o tokens).
-    addModel('gemini', 'gemini-2.5-flash');
-    addModel('cohere', 'command-a-plus');
-    addModel('cohere', 'command');
+    addAllModelsOf('gemini');
+    addAllModelsOf('cohere');
   } else if (isMediumRepo) {
     // Si el repositorio es mediano (30 KB - 150 KB), priorizamos Gemini y Cohere.
     // Relegamos Groq al final porque su cuota de TPM en cuentas gratuitas (12.000 tokens) es muy baja.
-    addModel('gemini', 'gemini-2.5-flash');
-    addModel('cohere', 'command-a-plus');
-    addModel('cohere', 'command');
+    addAllModelsOf('gemini');
+    addAllModelsOf('cohere');
   } else if (stackInfo.dominant === 'python' || stackInfo.dominant === 'go') {
     // Para repos pequeños de Python y Go
-    addModel('groq', 'llama-3.3-70b-versatile');
-    addModel('gemini', 'gemini-2.5-flash');
+    addAllModelsOf('groq');
+    addAllModelsOf('gemini');
   } else {
     // Por defecto para repos pequeños
-    addModel('gemini', 'gemini-2.5-flash');
-    addModel('groq', 'llama-3.3-70b-versatile');
+    addAllModelsOf('gemini');
+    addAllModelsOf('groq');
   }
 
   // 2. Capas de respaldo secundarias para garantizar 100% de tolerancia a fallos
-  addModel('gemini', 'gemini-flash-lite-latest');
-  
-  // Solo añadimos fallback de Groq/OpenRouter si el repositorio no es grande
-  if (!isLargeRepo) {
-    addModel('groq', 'mixtral-8x7b-32768');
-  }
-  
-  addModel('cohere', 'command-a-plus');
-  addModel('cohere', 'command');
-  addModel('gemini', 'gemini-3.1-flash-lite');
+  addAllModelsOf('gemini');
+  addAllModelsOf('cohere');
   
   if (!isLargeRepo) {
-    addModel('openrouter', 'meta-llama/llama-3.3-70b-instruct:free');
+    addAllModelsOf('groq');
+    addAllModelsOf('openrouter');
+  } else {
+    // Si es grande, OpenRouter tiene modelos que pueden soportarlo si la cuota lo permite
+    addAllModelsOf('openrouter');
   }
-  
-  addModel('gemini', 'gemma-4-31b-it');
 
   // Filtrar duplicados en la cadena (manteniendo el primer orden de prioridad)
   const seen = new Set();
