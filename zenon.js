@@ -133,7 +133,8 @@ function analyzeRepositoryStack(files) {
 // Construye una cadena priorizada de modelos ejecutables basada en los tokens disponibles y el stack
 function buildExecutionChain(keys, stackInfo, totalSize) {
   const chain = [];
-  const isLargeRepo = totalSize > 250 * 1024; // > 250 KB
+  const isLargeRepo = totalSize > 150 * 1024;    // > 150 KB
+  const isMediumRepo = totalSize > 30 * 1024;    // > 30 KB
 
   const addModel = (provider, model) => {
     if (keys[provider]) {
@@ -143,17 +144,24 @@ function buildExecutionChain(keys, stackInfo, totalSize) {
 
   // 1. Añadir el modelo óptimo según tamaño de repo y lenguaje dominante
   if (isLargeRepo) {
-    // Si el repositorio es grande, priorizamos Gemini por su ventana de contexto enorme
+    // Si el repositorio es grande, priorizamos Gemini y Cohere. Excluimos Groq por completo
+    // ya que su gateway HTTP rechazará prompts grandes con 413 (límite físico de 4MB o tokens).
     addModel('gemini', 'gemini-2.5-flash');
     addModel('cohere', 'command-r-plus');
-    addModel('groq', 'llama-3.3-70b-versatile');
+    addModel('deepseek', 'deepseek-chat');
+  } else if (isMediumRepo) {
+    // Si el repositorio es mediano (30 KB - 150 KB), priorizamos Gemini, Cohere y DeepSeek.
+    // Relegamos Groq al final porque su cuota de TPM en cuentas gratuitas (12.000 tokens) es muy baja.
+    addModel('gemini', 'gemini-2.5-flash');
+    addModel('deepseek', 'deepseek-chat');
+    addModel('cohere', 'command-r-plus');
   } else if (stackInfo.dominant === 'python' || stackInfo.dominant === 'go') {
-    // Para Python y Go, DeepSeek o Llama 70B suelen ser muy fuertes en lógica algorítmica
+    // Para repos pequeños de Python y Go
     addModel('deepseek', 'deepseek-chat');
     addModel('groq', 'llama-3.3-70b-versatile');
     addModel('gemini', 'gemini-2.5-flash');
   } else {
-    // Por defecto (Javascript, DevOps, etc.)
+    // Por defecto para repos pequeños
     addModel('gemini', 'gemini-2.5-flash');
     addModel('groq', 'llama-3.3-70b-versatile');
     addModel('deepseek', 'deepseek-chat');
@@ -161,10 +169,19 @@ function buildExecutionChain(keys, stackInfo, totalSize) {
 
   // 2. Capas de respaldo secundarias para garantizar 100% de tolerancia a fallos
   addModel('gemini', 'gemini-flash-lite-latest');
-  addModel('groq', 'mixtral-8x7b-32768');
+  
+  // Solo añadimos fallback de Groq/OpenRouter si el repositorio no es grande
+  if (!isLargeRepo) {
+    addModel('groq', 'mixtral-8x7b-32768');
+  }
+  
   addModel('cohere', 'command-r-plus');
   addModel('gemini', 'gemini-3.1-flash-lite');
-  addModel('openrouter', 'meta-llama/llama-3.3-70b-instruct:free');
+  
+  if (!isLargeRepo) {
+    addModel('openrouter', 'meta-llama/llama-3.3-70b-instruct:free');
+  }
+  
   addModel('gemini', 'gemma-4-31b-it');
 
   // Filtrar duplicados en la cadena (manteniendo el primer orden de prioridad)
@@ -547,28 +564,39 @@ async function callWithFallback(chain, mode, systemInstruction, prompt, enableGr
       }
       return result;
 
-    } catch (err) {
-      lastError = err;
-      const statusCode = err.statusCode || 0;
+      } catch (err) {
+        lastError = err;
+        const statusCode = err.statusCode || 0;
+        const isPayloadTooLarge = statusCode === 413 || 
+                                  err.message.toLowerCase().includes('too large') || 
+                                  err.message.toLowerCase().includes('context_length_exceeded');
 
-      if (isLastModel) {
-        console.error(`  ❌ Todos los modelos del catálogo de proveedores fallaron.`);
-        break;
-      }
+        if (isLastModel) {
+          console.error(`  ❌ Todos los modelos del catálogo de proveedores fallaron.`);
+          break;
+        }
 
-      if (statusCode === 429) {
-        // Rate-limited: wait, then try next fallback
-        const delayMs = BACKOFF_BASE_MS * Math.pow(2, i);
-        console.warn(`  ⚠️  Modelo "${modelLabel}" superó límite de cuota (429). Esperando ${delayMs / 1000}s antes de reintentar...`);
-        await sleep(delayMs);
-      } else if (statusCode >= 500) {
-        // Server error: switch immediately
-        console.warn(`  ⚠️  Modelo "${modelLabel}" falló con error de servidor (${statusCode}). Cambiando al siguiente de inmediato...`);
-      } else {
-        // Other errors: switch immediately
-        console.warn(`  ⚠️  Modelo "${modelLabel}" falló (${statusCode || 'error de red'}). Cambiando al siguiente...`);
+        if (isPayloadTooLarge) {
+          console.warn(`  ⚠️  Modelo "${modelLabel}" falló por límite de tamaño/tokens (413 o context limit). Saltando todos los modelos de ${entry.provider.toUpperCase()} en esta ejecución...`);
+          // Remover todos los modelos futuros de este mismo proveedor de la cadena de fallback
+          for (let j = chain.length - 1; j > i; j--) {
+            if (chain[j].provider === entry.provider) {
+              chain.splice(j, 1);
+            }
+          }
+        } else if (statusCode === 429) {
+          // Rate-limited: wait, then try next fallback
+          const delayMs = BACKOFF_BASE_MS * Math.pow(2, i);
+          console.warn(`  ⚠️  Modelo "${modelLabel}" superó límite de cuota (429). Esperando ${delayMs / 1000}s antes de reintentar...`);
+          await sleep(delayMs);
+        } else if (statusCode >= 500) {
+          // Server error: switch immediately
+          console.warn(`  ⚠️  Modelo "${modelLabel}" falló con error de servidor (${statusCode}). Cambiando al siguiente de inmediato...`);
+        } else {
+          // Other errors: switch immediately
+          console.warn(`  ⚠️  Modelo "${modelLabel}" falló (${statusCode || 'error de red'}). Cambiando al siguiente...`);
+        }
       }
-    }
   }
 
   throw lastError;
