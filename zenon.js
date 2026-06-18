@@ -325,10 +325,9 @@ async function main() {
   const githubToken = process.env.INPUT_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
   const isCI = !!process.env.GITHUB_ACTIONS;
 
-  // Auto-select the best model for each task (no user input needed)
-  // Assist: fast & free — ideal for reading and explaining code
-  // Correct: smarter & free — better reasoning for rewriting and fixing code
-  const model = mode === 'correct' ? 'gemini-2.5-flash' : 'gemini-2.0-flash';
+  // gemini-2.5-flash is the current free-tier model for both modes.
+  // It handles both fast analysis and precise code rewriting well.
+  const model = 'gemini-2.5-flash';
 
   // --- Startup diagnostics (visible in CI logs) ---
   console.log('=== Zenon startup ===');
