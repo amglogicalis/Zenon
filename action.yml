@@ -27,9 +27,13 @@ inputs:
     required: false
     default: ''
   mode:
-    description: 'Operating mode: "assist" (analyses code & suggests improvements) or "correct" (directly modifies files & commits)'
+    description: 'Operating mode: "assist" (analyses code & suggests improvements), "correct" (directly modifies files & commits) or "objective" (implements a goal described in a markdown file)'
     required: false
     default: 'assist'
+  objective-file:
+    description: 'Path (relative to repo root) to the markdown file containing the objective for "objective" mode (default: zenon_objective.md)'
+    required: false
+    default: 'zenon_objective.md'
   github-token:
     description: 'GitHub Token for posting PR comments and pushing code changes'
     required: false
@@ -55,6 +59,9 @@ runs:
         echo "DeepSeek Key : $([ -n "$INPUT_DEEPSEEK_API_KEY" ] && echo 'set ✅' || echo 'not set ❌')"
         echo "Cohere Key   : $([ -n "$INPUT_COHERE_API_KEY" ] && echo 'set ✅' || echo 'not set ❌')"
         echo "OpenRouter   : $([ -n "$INPUT_OPENROUTER_API_KEY" ] && echo 'set ✅' || echo 'not set ❌')"
+        if [ "$INPUT_MODE" = "objective" ]; then
+          echo "Objective    : $INPUT_OBJECTIVE_FILE"
+        fi
         echo "========================"
       env:
         INPUT_ZENON_API_KEY: ${{ inputs.zenon-api-key }}
@@ -76,5 +83,6 @@ runs:
         INPUT_MODE: ${{ inputs.mode }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         INPUT_EXCLUDE: ${{ inputs.exclude }}
+        INPUT_OBJECTIVE_FILE: ${{ inputs.objective-file }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
 

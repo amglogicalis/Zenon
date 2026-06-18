@@ -10,13 +10,18 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Zenon Mode — "assist": analyze & report | "correct": auto-fix & commit'
+        description: 'Zenon Mode — "assist": analyze & report | "correct": auto-fix & commit | "objective": implement a goal'
         required: true
         default: 'assist'
         type: choice
         options:
           - assist
           - correct
+          - objective
+      objective-file:
+        description: 'Path to objective markdown file (only used when mode is "objective")'
+        required: false
+        default: 'zenon_objective.md'
 
 jobs:
   zenon:
@@ -44,3 +49,4 @@ jobs:
           cohere-api-key: ${{ secrets.COHERE_API_KEY }}
           openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
           mode: ${{ github.event.inputs.mode || 'assist' }}
+          objective-file: ${{ github.event.inputs.objective-file || 'zenon_objective.md' }}

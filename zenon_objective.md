@@ -1,14 +1,19 @@
-# Objetivo de Zenon (Zenon Objective)
+# Zenon Objective
 
-Describe aquí qué quieres implementar, mejorar, añadir o corregir exactamente en tu repositorio.
-Zenon leerá este archivo y modificará tu código de forma automática para lograrlo.
+<!-- 
+  Describe here exactly what you want Zenon to implement, improve, or fix.
+  Be as specific or as high-level as you like — Zenon will analyze the entire
+  codebase and implement the best possible solution that respects the existing
+  architecture, code style, and conventions.
 
-## Ejemplos de objetivos:
-- "Añade un endpoint GET /ping en el archivo server.js que responda con 'pong'"
-- "Optimiza la función calcularTotal() en utils.js usando memoización"
-- "Agrega validación de correo electrónico en formulario_registro.js"
+  Examples:
+    - "Add input validation to all functions that receive user data."
+    - "Refactor the authentication module to use JWT instead of sessions."
+    - "Create a REST endpoint GET /health that returns { status: 'ok', version: '...' }."
+    - "Add JSDoc comments to every exported function in src/utils.js."
+-->
 
-## Tu objetivo aquí:
-Describe tu objetivo detallado a continuación:
+## Goal
 
-- 
+<!-- Write your objective below this line -->
+

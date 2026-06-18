@@ -235,7 +235,7 @@ function parseArgs() {
     } else if ((arg === '--exclude' || arg === '-e') && i + 1 < process.argv.length) {
       args.exclude = process.argv[++i];
     } else if ((arg === '--objective' || arg === '-o') && i + 1 < process.argv.length) {
-      args.objective = process.argv[++i];
+      args.objectiveFile = process.argv[++i];
     }
     // Note: --model / -d intentionally removed. Zenon selects models automatically.
   }
@@ -355,8 +355,7 @@ function buildRequestBody(mode, systemInstruction, prompt, model, enableGroundin
     body.tools = [{ googleSearch: {} }];
   }
 
-  const isJSONMode = mode.toLowerCase() === 'correct' || mode.toLowerCase() === 'objective';
-  if (isJSONMode) {
+  if (mode.toLowerCase() === 'correct') {
     body.generationConfig = {
       responseMimeType: 'application/json',
       responseSchema: {
@@ -665,6 +664,7 @@ async function main() {
   const keys = getAvailableKeys(cliArgs);
   const mode = (cliArgs.mode || process.env.INPUT_MODE || 'assist').toLowerCase();
   const exclude = cliArgs.exclude || process.env.INPUT_EXCLUDE || '';
+  const objectiveFile = cliArgs.objectiveFile || process.env.INPUT_OBJECTIVE_FILE || 'zenon_objective.md';
   const githubToken = process.env.INPUT_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
   const isCI = !!process.env.GITHUB_ACTIONS;
 
@@ -676,6 +676,9 @@ async function main() {
   console.log(`Keys found   : ${Object.keys(keys).filter(k => keys[k]).map(k => k.toUpperCase()).join(', ') || 'NINGUNA ❌'}`);
   console.log(`GitHub Token : ${githubToken ? 'found ✅' : 'not set (PR comments disabled)'}`);
   console.log(`Exclude      : "${exclude || '(none)'}"`);
+  if (mode === 'objective') {
+    console.log(`Objective    : "${objectiveFile}"`);
+  }
   console.log('=====================');
 
   const hasAtLeastOneKey = Object.values(keys).some(Boolean);
@@ -687,9 +690,29 @@ async function main() {
     process.exit(1);
   }
 
-  if (mode !== 'assist' && mode !== 'correct' && mode !== 'objective') {
-    console.error(`❌ Invalid mode "${mode}". Supported modes: "assist", "correct", or "objective".`);
+  if (!['assist', 'correct', 'objective'].includes(mode)) {
+    console.error(`❌ Modo "${mode}" no reconocido. Modos disponibles: "assist", "correct", "objective".`);
     process.exit(1);
+  }
+
+  // =============================================================================
+  // PASO 4: Modo Objective — Leer el archivo de objetivos
+  // =============================================================================
+  let objectiveContent = '';
+  if (mode === 'objective') {
+    const objectivePath = path.resolve(process.cwd(), objectiveFile);
+    if (!fs.existsSync(objectivePath)) {
+      console.error(`❌ Archivo de objetivos no encontrado: "${objectiveFile}"`);
+      console.error(`   Crea el archivo "${objectiveFile}" en la raíz del repositorio y describe el objetivo.`);
+      console.error(`   O indica la ruta correcta con --objective <ruta>`);
+      process.exit(1);
+    }
+    objectiveContent = fs.readFileSync(objectivePath, 'utf8').trim();
+    if (!objectiveContent) {
+      console.error(`❌ El archivo de objetivos "${objectiveFile}" está vacío. Escribe el objetivo antes de ejecutar Zenon.`);
+      process.exit(1);
+    }
+    console.log(`🎯 Objetivo cargado desde: ${objectiveFile} (${objectiveContent.length} caracteres)`);
   }
 
   console.log(`Zenon starting...`);
@@ -725,36 +748,8 @@ async function main() {
     process.exit(1);
   }
 
-  // Cargar el objetivo de desarrollo si estamos en modo objective
-  let objectiveContent = '';
-  if (mode === 'objective') {
-    const objectivePath = cliArgs.objective || process.env.INPUT_OBJECTIVE || 'zenon_objective.md';
-    if (!fs.existsSync(objectivePath)) {
-      if (objectivePath === 'zenon_objective.md') {
-        const initialTemplate = `# Objetivo de Zenon (Zenon Objective)
-
-Describe aquí qué quieres implementar, mejorar, añadir o corregir exactamente en tu repositorio.
-Por ejemplo:
-- "Añade un endpoint GET /ping en el archivo server.js que responda con 'pong'"
-- "Optimiza la función calcularTotal() en utils.js usando memoización"
-- "Agrega validación de correo electrónico en formulario_registro.js"
-
-Guarda este archivo y vuelve a ejecutar Zenon.
-`;
-        fs.writeFileSync(objectivePath, initialTemplate, 'utf8');
-        console.log(`ℹ️  Se ha creado una plantilla inicial en: ${objectivePath}`);
-        console.log('   Por favor, escribe tus requerimientos en el archivo y vuelve a ejecutar Zenon.');
-        process.exit(0);
-      } else {
-        console.error(`❌ Archivo de objetivos no encontrado en la ruta: ${objectivePath}`);
-        process.exit(1);
-      }
-    }
-    objectiveContent = fs.readFileSync(objectivePath, 'utf8');
-    console.log(`🎯 Objetivo de desarrollo cargado desde ${objectivePath} (${objectiveContent.length} bytes)`);
-  }
-
-  console.log(`Total codebase size: ${(totalSize / 1024).toFixed(2)} KB | Engine: ${mode === 'correct' ? 'precision' : 'analysis'} mode`);
+  const engineLabel = mode === 'correct' ? 'precision' : mode === 'objective' ? 'objective' : 'analysis';
+  console.log(`Total codebase size: ${(totalSize / 1024).toFixed(2)} KB | Engine: ${engineLabel} mode`);
 
   // Construir el payload del repositorio completo
   let codebasePayload = '';
@@ -828,31 +823,53 @@ Provide a clear, concise, and structured summary of your findings. This summary 
   // Prompt logic
   const isCorrectMode = mode === 'correct';
   const isObjectiveMode = mode === 'objective';
-  
-  let systemInstruction = `You are "Zenon", a highly capable AI assistant for code analysis, review, and modification.\nYou analyze the user's project files, find bugs, vulnerabilities, performance regressions, syntax errors, and architectural flaws, and resolve them.\nYou must adapt your output to the requested mode:\n\n${isCorrectMode ? 
+
+  let systemInstruction;
+  let userPrompt;
+
+  if (isObjectiveMode) {
+    // ==========================================================================
+    // PASO 4: Modo Objective — System Instruction y Prompt específicos
+    // ==========================================================================
+    systemInstruction = `You are "Zenon", a senior software engineer and AI coding assistant.
+The user has given you a specific development objective to implement in their repository.
+Your job is to:
+1. Analyze the entire codebase to understand the existing architecture, patterns, and conventions.
+2. Implement the requested objective in the most logical, optimized, and coherent way possible, respecting the existing code style.
+3. Create new files or modify existing ones as needed to fully fulfill the objective.
+4. Do NOT break existing functionality — all changes must be additive or safe replacements.
+5. You MUST return a JSON object listing ALL files you created or modified.
+6. Always return the FULL file content in the 'content' field. Do not truncate — write the entire file.
+7. Do not include files that were not changed.`;
+
+    if (cachedKnowledge) {
+      systemInstruction += `\n\n=== CONTEXTO DEL REPOSITORIO (AUTOENTRENADO) ===\n${cachedKnowledge}\n================================================`;
+    }
+
+    userPrompt = `Here is the current codebase:\n\n${codebasePayload}\n\n=== OBJECTIVE ===\n${objectiveContent}\n=================\n\nImplement the objective above. Return the JSON schema with the files to create or modify.`;
+
+    console.log('🎯 Zenon is implementing the objective...');
+  } else {
+    systemInstruction = `You are "Zenon", a highly capable AI assistant for code analysis and review.\nYou analyze the user's project files, find bugs, vulnerabilities, performance regressions, syntax errors, and architectural flaws, and resolve them.\nYou must adapt your output to the requested mode:\n\n${isCorrectMode ?
   `MODE: CORRECT\n  Analyze the codebase, detect bugs, poor patterns, syntax errors, or logical mistakes.\n  Provide corrected versions of the files.\n  You MUST return a JSON object listing files that need corrections.\n  Always return the FULL file content in the 'content' field. Do not truncate the code, do not add comments like '// ... rest of the file stays same'. You must provide a clean drop-in replacement.\n  Do not include files that do not need changes.`
-  : (isObjectiveMode ?
-  `MODE: OBJECTIVE\n  Your task is to modify the codebase to fulfill a specific development objective or user requirements.\n  Implement the requested features, improvements, fixes, or additions described in the user's objective specification.\n  You MUST return a JSON object listing the files that need to be created or modified to satisfy this objective.\n  Always return the FULL file content in the 'content' field. Do not truncate the code. You must provide a clean, complete file content.\n  Do not include files that do not need changes.`
-  :
-  `MODE: ASSIST\n  Analyze the codebase, detect bugs, security issues, performance bottlenecks, and design/cleanliness issues.\n  Generate a helpful and detailed Markdown report with your findings.\n  Use clear sections:\n  - 🛠️ Bugs and Functional Issues\n  - 🔒 Security Vulnerabilities\n  - ⚡ Performance Improvements\n  - 🧼 Code Cleanliness and Best Practices\n  For each recommendation, give a clear explanation and code snippets indicating how to apply it.`)
+    :
+  `MODE: ASSIST\n  Analyze the codebase, detect bugs, security issues, performance bottlenecks, and design/cleanliness issues.\n  Generate a helpful and detailed Markdown report with your findings.\n  Use clear sections:\n  - 🛠️ Bugs and Functional Issues\n  - 🔒 Security Vulnerabilities\n  - ⚡ Performance Improvements\n  - 🧼 Code Cleanliness and Best Practices\n  For each recommendation, give a clear explanation and code snippets indicating how to apply it.`
 }`;
 
-  // Inyectar el conocimiento adquirido al systemInstruction principal
-  if (cachedKnowledge) {
-    systemInstruction += `\n\n=== APRENDIZAJE CONTEXTUAL DEL REPOSITORIO (AUTOENTRENADO) ===\n${cachedKnowledge}\n=============================================================`;
-  }
+    // Inyectar el conocimiento adquirido al systemInstruction principal
+    if (cachedKnowledge) {
+      systemInstruction += `\n\n=== APRENDIZAJE CONTEXTUAL DEL REPOSITORIO (AUTOENTRENADO) ===\n${cachedKnowledge}\n=============================================================`;
+    }
 
-  let userPrompt = '';
-  if (isObjectiveMode) {
-    userPrompt = `Here is the codebase files:\n\n${codebasePayload}\n\nAnd here is the objective you must implement:\n=== USER DEVELOPMENT OBJECTIVE ===\n${objectiveContent}\n==================================\n\nModify, create, or delete files in the repository to satisfy the development objective. Return the files schema JSON.`;
-  } else {
     userPrompt = `Here is the codebase files:\n  \n${codebasePayload}\n\nAnalyze these files and perform the requested actions for mode: ${mode.toUpperCase()}.\n${isCorrectMode ? 'Return the files schema JSON.' : 'Return the Markdown code review report.'}`;
-  }
 
-  console.log('Zenon is analyzing your codebase...');
+    console.log('Zenon is analyzing your codebase...');
+  }
 
   try {
-    const rawResponse = await callWithFallback(chain, mode, systemInstruction, userPrompt);
+    // Objective mode reuses the 'correct' JSON schema (files array) for output
+    const callMode = isObjectiveMode ? 'correct' : mode;
+    const rawResponse = await callWithFallback(chain, callMode, systemInstruction, userPrompt);
     console.log('Analysis complete.');
 
     if (isCorrectMode || isObjectiveMode) {
@@ -860,13 +877,13 @@ Provide a clear, concise, and structured summary of your findings. This summary 
       try {
         result = JSON.parse(rawResponse);
       } catch (parseErr) {
-        console.error('Failed to parse response. Raw output was:');
+        console.error('Failed to parse correction response. Raw output was:');
         console.log(rawResponse);
         throw new Error('Response was not valid JSON: ' + parseErr.message);
       }
 
       if (!result.files || !Array.isArray(result.files)) {
-        console.log('Zenon did not propose any file modifications.');
+        console.log('Zenon did not find any files that require corrections.');
         if (isCI && process.env.GITHUB_STEP_SUMMARY) {
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '### 🤖 Zenon Auto-Correction\n\nNo corrections were found necessary for this codebase.\n');
         }
@@ -874,7 +891,7 @@ Provide a clear, concise, and structured summary of your findings. This summary 
       }
 
       const modifiedFiles = [];
-      console.log(`Zenon proposes modifications in ${result.files.length} files.`);
+      console.log(`Zenon proposes corrections in ${result.files.length} files.`);
 
       for (const file of result.files) {
         const filePath = file.path;
@@ -895,13 +912,11 @@ Provide a clear, concise, and structured summary of your findings. This summary 
         modifiedFiles.push(filePath);
       }
 
-      console.log('\nAll modifications applied to local files.');
+      console.log('\nAll corrections applied to local files.');
 
       if (isCI) {
         // Write report to step summary
-        let summaryContent = isObjectiveMode 
-          ? `### 🤖 Zenon Objective Implemented\n\nZenon has implemented the requested objective and updated/created the following files:\n\n`
-          : `### 🤖 Zenon Auto-Correction Applied\n\nZenon has analyzed your code and applied corrections to the following files:\n\n`;
+        let summaryContent = `### 🤖 Zenon Auto-Correction Applied\n\nZenon has analyzed your code and applied corrections to the following files:\n\n`;
         for (const file of result.files) {
           summaryContent += `- **${file.path}**: ${file.explanation || 'Applied improvements'}\n`;
         }
@@ -910,13 +925,9 @@ Provide a clear, concise, and structured summary of your findings. This summary 
         // Commit and push changes
         commitAndPushChanges(modifiedFiles);
       } else {
-        console.log(isObjectiveMode 
-          ? '\n[Local Mode] Objective changes applied. You can use "git diff" to review changes.' 
-          : '\n[Local Mode] Corrections applied. You can use "git diff" to review changes.');
+        console.log('\n[Local Mode] Corrections applied. You can use "git diff" to review changes.');
         // Write a local changes report
-        let localReport = isObjectiveMode 
-          ? `# Zenon Objective Implementation Report\n\nThe following changes were applied to satisfy your development objective:\n\n`
-          : `# Zenon Auto-Corrections Report\n\nThe following changes were applied to your local files:\n\n`;
+        let localReport = `# Zenon Auto-Corrections Report\n\nThe following changes were applied to your local files:\n\n`;
         for (const file of result.files) {
           localReport += `## File: ${file.path}\n**Explanation**: ${file.explanation || 'Applied improvements'}\n\n`;
         }
