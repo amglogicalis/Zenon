@@ -7,8 +7,25 @@ branding:
 
 inputs:
   zenon-api-key:
-    description: 'Zenon AI API Key (configure as a repository secret)'
-    required: true
+    description: 'Zenon AI API Key (Gemini API - configure as a repository secret)'
+    required: false
+    default: ''
+  groq-api-key:
+    description: 'Groq API Key (optional - configure as a repository secret)'
+    required: false
+    default: ''
+  deepseek-api-key:
+    description: 'DeepSeek API Key (optional - configure as a repository secret)'
+    required: false
+    default: ''
+  cohere-api-key:
+    description: 'Cohere API Key (optional - configure as a repository secret)'
+    required: false
+    default: ''
+  openrouter-api-key:
+    description: 'OpenRouter API Key (optional - configure as a repository secret)'
+    required: false
+    default: ''
   mode:
     description: 'Operating mode: "assist" (analyses code & suggests improvements) or "correct" (directly modifies files & commits)'
     required: false
@@ -33,10 +50,18 @@ runs:
         echo "Working dir  : $(pwd)"
         echo "Action path  : ${{ github.action_path }}"
         echo "Mode         : $INPUT_MODE"
-        echo "API Key set  : $([ -n "$INPUT_ZENON_API_KEY" ] && echo 'YES ✅' || echo 'NO ❌')"
+        echo "Gemini Key   : $([ -n "$INPUT_ZENON_API_KEY" ] && echo 'set ✅' || echo 'not set ❌')"
+        echo "Groq Key     : $([ -n "$INPUT_GROQ_API_KEY" ] && echo 'set ✅' || echo 'not set ❌')"
+        echo "DeepSeek Key : $([ -n "$INPUT_DEEPSEEK_API_KEY" ] && echo 'set ✅' || echo 'not set ❌')"
+        echo "Cohere Key   : $([ -n "$INPUT_COHERE_API_KEY" ] && echo 'set ✅' || echo 'not set ❌')"
+        echo "OpenRouter   : $([ -n "$INPUT_OPENROUTER_API_KEY" ] && echo 'set ✅' || echo 'not set ❌')"
         echo "========================"
       env:
         INPUT_ZENON_API_KEY: ${{ inputs.zenon-api-key }}
+        INPUT_GROQ_API_KEY: ${{ inputs.groq-api-key }}
+        INPUT_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
+        INPUT_COHERE_API_KEY: ${{ inputs.cohere-api-key }}
+        INPUT_OPENROUTER_API_KEY: ${{ inputs.openrouter-api-key }}
         INPUT_MODE: ${{ inputs.mode }}
 
     - name: Run Zenon AI Assistant
@@ -44,6 +69,10 @@ runs:
       run: node "${{ github.action_path }}/zenon.js"
       env:
         INPUT_ZENON_API_KEY: ${{ inputs.zenon-api-key }}
+        INPUT_GROQ_API_KEY: ${{ inputs.groq-api-key }}
+        INPUT_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
+        INPUT_COHERE_API_KEY: ${{ inputs.cohere-api-key }}
+        INPUT_OPENROUTER_API_KEY: ${{ inputs.openrouter-api-key }}
         INPUT_MODE: ${{ inputs.mode }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         INPUT_EXCLUDE: ${{ inputs.exclude }}

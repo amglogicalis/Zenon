@@ -2,59 +2,47 @@
 
 Documento de referencia para el desarrollo incremental de Zenon. Cada paso se implementa sobre el anterior sin romper la funcionalidad existente.
 
-> **Estado actual**: Zenon v1 funciona correctamente (assist + correct mode, CI GitHub Actions, local CLI).
+> **Estado actual**: ¡Todos los pasos de la evolución completados con éxito! Zenon es ahora un orquestador AI multi-proveedor autoadaptativo con caché contextual.
 
 ---
 
-## Paso 1: Cadena de Fallback de Modelos con Backoff Asincrono - EN PROGRESO
+## Paso 1: Cadena de Fallback de Modelos con Backoff Asincrono - COMPLETADO ✅
 
 ### Objetivo
 Asegurar que Zenon complete su ejecución con éxito incluso si el modelo principal devuelve errores 429 (cuota excedida) o 503 (servidor saturado).
 
-### Cadena de Modelos (API Key del usuario)
-| # | Modelo | Rol |
-|---|---|---|
-| 1 | gemini-2.5-flash | Principal - ventana de contexto grande, optimo para codigo |
-| 2 | gemini-flash-lite-latest | Fallback 1 - ultraligero, alta disponibilidad |
-| 3 | gemini-3.1-flash-lite | Fallback 2 - version actualizada del modelo ligero |
-| 4 | gemma-4-31b-it | Fallback 3 - modelo instructivo abierto de ultimo recurso |
-
 ### Mecanismo
-- Error 429: espera backoff exponencial (2s -> 4s -> 8s) antes del siguiente modelo.
-- Error 503/500: reintenta con el siguiente modelo inmediatamente.
-- Todos fallan: error amigable + exit code 1.
+- Error 429: espera backoff exponencial (2s -> 4s -> 8s) antes del siguiente modelo de la cadena.
+- Error 5xx/400: reintenta con el siguiente modelo de la cadena inmediatamente.
 
 ---
 
-## Paso 2: Autoentrenamiento y Aprendizaje Contextual - PENDIENTE
+## Paso 2: Autoentrenamiento y Aprendizaje Contextual - COMPLETADO ✅
 
 ### Objetivo
 Zenon entiende la arquitectura del repo antes de analizar/corregir, buscando en internet documentacion relevante y cacheando el conocimiento aprendido.
 
 ### Mecanismo
-- Google Search Grounding: inyectar tools: [{ googleSearch: {} }] en la llamada a Gemini.
-- Cache local (.zenon_cache.json, en .gitignore): hash del repo + resumen de arquitectura. Si el repo no ha cambiado, salta el autoentrenamiento.
+- Google Search Grounding: inyecta tools: [{ googleSearch: {} }] en la llamada a Gemini para búsquedas web nativas.
+- Cache local (.zenon_cache.json, agregado automáticamente a .gitignore): almacena la firma del estado del repositorio (SHA-256) y el perfil de conocimiento. Si no hay cambios en el repo, salta el autoentrenamiento.
 
 ---
 
-## Paso 3: Evolución y Multi-proveedor - PENDIENTE
+## Paso 3: Evolución y Multi-proveedor - COMPLETADO ✅
 
 ### Objetivo
 Integrar proveedores de IA adicionales gratuitos y crear un selector inteligente que elija el mejor modelo segun el tipo de codigo del repositorio.
 
-### Catalogo de Proveedores
-| Proveedor | Modelo | Ventaja | Limite gratis |
+### Catalogo de Proveedores Integrados
+| Proveedor | Modelo Principal | Ventaja | Clave de Entorno |
 |---|---|---|---|
-| Google AI Studio | gemini-2.5-flash | Contexto enorme | 60 RPM |
-| Groq API | llama-3.3-70b | Velocidad extrema | 30 RPM, 100k tokens/dia |
-| DeepSeek | deepseek-chat | Razonamiento avanzado | 5M tokens gratis inicial |
-| Cohere | command-r-plus | Multilingue y docs | 1.000 llamadas/mes |
-| OpenRouter | Varios open-source | Backup universal | 50 req/dia |
+| Google Gemini | gemini-2.5-flash | Contexto enorme y búsqueda | ZENON_API_KEY |
+| Groq API | llama-3.3-70b-versatile | Lógica avanzada y velocidad | GROQ_API_KEY |
+| DeepSeek | deepseek-chat | Razonamiento óptimo en backend | DEEPSEEK_API_KEY |
+| Cohere | command-r-plus | Síntesis multilingüe | COHERE_API_KEY |
+| OpenRouter | Llama 3.3 70B (free) | Respaldo gratuito universal | OPENROUTER_API_KEY |
 
----
-
-## Restricciones Tecnicas Globales
-- Cero dependencias npm - Todo en Node.js puro con fetch nativo.
-- Sin mencion de Gemini en outputs de usuario - Siempre usar Zenon AI Engine.
-- Modelos hardcodeados - El usuario nunca configura modelos; Zenon los selecciona automaticamente.
-- Local nunca hace push - Solo el entorno GitHub Actions CI hace commit/push automatico.
+### Selector Inteligente
+1. Pre-análisis de extensiones del repo para detectar si predomina JS/TS, Python, Go o DevOps.
+2. Construye una cadena prioritaria cruzando proveedores según el stack y el tamaño del repo.
+3. Si un proveedor falla, el fallback continúa automáticamente usando el siguiente proveedor en orden.
