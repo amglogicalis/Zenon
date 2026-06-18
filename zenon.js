@@ -43,43 +43,46 @@ function ensureGitignore() {
 // =============================================================================
 // PASO 3: Evolución y Multi-proveedor (Selector Inteligente y APIs externas)
 // =============================================================================
+// maxInputChars = límite máximo de caracteres en el prompt de usuario (≈ tokens × 4).
+// Se usa para truncar automáticamente el codebase antes de enviarlo al modelo.
+// Esto previene errores 413 (Groq) y 422 (Cohere) por exceso de tokens.
 const PROVIDERS = {
   gemini: {
     keyName: 'ZENON_API_KEY',
     alternateKeyName: 'GEMINI_API_KEY',
     models: [
-      'gemini-2.5-flash',         // Principal  — contexto grande, óptimo para código
-      'gemini-flash-lite-latest',   // Fallback 1 — ultraligero, alta disponibilidad
-      'gemini-3.1-flash-lite',    // Fallback 2 — versión actualizada del modelo ligero
-      'gemma-4-31b-it'            // Fallback 3 — modelo instructivo abierto, último recurso
+      { id: 'gemini-2.5-flash',        maxInputChars: 3000000 }, // 1M tokens
+      { id: 'gemini-flash-lite-latest', maxInputChars: 1000000 }, // 256K tokens
+      { id: 'gemini-3.1-flash-lite',   maxInputChars: 1000000 }, // 256K tokens
+      { id: 'gemma-4-31b-it',          maxInputChars:  400000 }  // 128K tokens
     ]
   },
   groq: {
     keyName: 'GROQ_API_KEY',
     models: [
-      'llama-3.3-70b-versatile',                  // Gran capacidad y velocidad
-      'meta-llama/llama-4-scout-17b-16e-instruct', // Llama 4 en Groq
-      'qwen/qwen3.6-27b',                         // Qwen 3.6 de excelente potencia
-      'llama-3.1-8b-instant'                      // Rápido, alta disponibilidad TPM
+      { id: 'llama-3.3-70b-versatile',                   maxInputChars: 28000 }, // ~7K tokens (safe free tier)
+      { id: 'meta-llama/llama-4-scout-17b-16e-instruct', maxInputChars: 60000 }, // ~15K tokens
+      { id: 'qwen/qwen3.6-27b',                          maxInputChars: 60000 }, // ~15K tokens
+      { id: 'llama-3.1-8b-instant',                      maxInputChars: 24000 }  // ~6K tokens
     ]
   },
   cohere: {
     keyName: 'COHERE_API_KEY',
     models: [
-      'command-a-plus-05-2026',  // Flagship actual para agentes y código en Cohere
-      'command-r-plus-08-2024',  // Flagship anterior ultra-estable con contexto de 128k
-      'command-a-03-2025',       // Versión estable intermedia
-      'command-r-08-2024'        // Ligero, rápido y de cuota más permisiva
+      { id: 'command-a-plus-05-2026', maxInputChars: 200000 }, // ~50K tokens (conservador)
+      { id: 'command-r-plus-08-2024', maxInputChars: 500000 }, // ~128K tokens
+      { id: 'command-a-03-2025',      maxInputChars: 200000 }, // ~50K tokens
+      { id: 'command-r-08-2024',      maxInputChars: 500000 }  // ~128K tokens
     ]
   },
   openrouter: {
     keyName: 'OPENROUTER_API_KEY',
     models: [
-      'cohere/north-mini-code:free',              // Especializado en código, gratuito
-      'qwen/qwen3-coder:free',                    // Qwen Coder gratuito
-      'google/gemma-4-31b-it:free',               // Gemma 4 gratuito
-      'meta-llama/llama-3.3-70b-instruct:free',   // Llama 3.3 70B gratuito
-      'google/gemini-3.1-flash-lite'              // Gemini Lite en OpenRouter
+      { id: 'cohere/north-mini-code:free',            maxInputChars: 200000 }, // código, gratuito
+      { id: 'qwen/qwen3-coder:free',                  maxInputChars: 300000 }, // Qwen Coder gratuito
+      { id: 'google/gemma-4-31b-it:free',             maxInputChars: 300000 }, // Gemma 4 gratuito
+      { id: 'meta-llama/llama-3.3-70b-instruct:free', maxInputChars: 300000 }, // Llama 3.3 70B gratuito
+      { id: 'google/gemini-3.1-flash-lite',           maxInputChars: 400000 }  // Gemini Lite
     ]
   }
 };
@@ -135,41 +138,41 @@ function analyzeRepositoryStack(files) {
 // Construye una cadena priorizada de modelos ejecutables basada en los tokens disponibles y el stack
 function buildExecutionChain(keys, stackInfo, totalSize) {
   const chain = [];
-  const isLargeRepo = totalSize > 150 * 1024;    // > 150 KB
-  const isMediumRepo = totalSize > 30 * 1024;    // > 30 KB
 
-  const addModel = (provider, model) => {
-    if (keys[provider]) {
-      chain.push({ provider, model, apiKey: keys[provider] });
+  // addModel ahora recibe el objeto completo {id, maxInputChars} de PROVIDERS
+  const addModel = (provider, modelObj) => {
+    if (keys[provider] && modelObj) {
+      chain.push({ provider, model: modelObj.id, maxInputChars: modelObj.maxInputChars, apiKey: keys[provider] });
     }
   };
 
-  // Ayudantes para obtener el modelo en un índice específico de PROVIDERS
+  // Ayudante para obtener el objeto de modelo en un índice específico de PROVIDERS
   const getModelAt = (provider, index) => {
     return PROVIDERS[provider] && PROVIDERS[provider].models[index];
   };
 
   // Fase 1: Modelos Insignia (Los mejores para cada tarea)
   // Siempre ponemos Gemini-2.5-Flash al principio por su ventana de contexto masiva.
-  addModel('gemini', 'gemini-2.5-flash');
+  addModel('gemini', getModelAt('gemini', 0)); // gemini-2.5-flash
 
   // Alternamos los modelos insignia de los demás proveedores
   if (keys['cohere']) {
     addModel('cohere', getModelAt('cohere', 0)); // command-a-plus-05-2026
   }
-  
-  if (!isLargeRepo && keys['groq']) {
+
+  // Groq siempre se incluye — el prompt se truncará según maxInputChars del modelo
+  if (keys['groq']) {
     addModel('groq', getModelAt('groq', 0)); // llama-3.3-70b-versatile
   }
 
   // Fase 2: Fallbacks de Nivel Medio (Alta disponibilidad y velocidad)
-  addModel('gemini', 'gemini-flash-lite-latest');
-  
+  addModel('gemini', getModelAt('gemini', 1)); // gemini-flash-lite-latest
+
   if (keys['cohere']) {
     addModel('cohere', getModelAt('cohere', 1)); // command-r-plus-08-2024
   }
 
-  if (!isLargeRepo && keys['groq']) {
+  if (keys['groq']) {
     addModel('groq', getModelAt('groq', 1)); // llama-4-scout
   }
 
@@ -179,14 +182,14 @@ function buildExecutionChain(keys, stackInfo, totalSize) {
   }
 
   // Fase 3: Fallbacks de Nivel Bajo y Último Recurso
-  addModel('gemini', 'gemini-3.1-flash-lite');
-  
+  addModel('gemini', getModelAt('gemini', 2)); // gemini-3.1-flash-lite
+
   if (keys['cohere']) {
     addModel('cohere', getModelAt('cohere', 2)); // command-a-03-2025
     addModel('cohere', getModelAt('cohere', 3)); // command-r-08-2024
   }
 
-  if (!isLargeRepo && keys['groq']) {
+  if (keys['groq']) {
     addModel('groq', getModelAt('groq', 2)); // qwen3.6-27b
     addModel('groq', getModelAt('groq', 3)); // llama-3.1-8b-instant
   }
@@ -197,7 +200,7 @@ function buildExecutionChain(keys, stackInfo, totalSize) {
     addModel('openrouter', getModelAt('openrouter', 4)); // gemini-3.1-flash-lite
   }
 
-  addModel('gemini', 'gemma-4-31b-it');
+  addModel('gemini', getModelAt('gemini', 3)); // gemma-4-31b-it
 
   // Filtrar duplicados en la cadena (manteniendo el primer orden de prioridad)
   const seen = new Set();
@@ -458,13 +461,32 @@ async function callGeminiModel(apiKey, model, mode, systemInstruction, prompt, e
   return candidate.content.parts[0].text;
 }
 
+// Trunca el prompt de usuario si excede el límite del modelo, preservando el sistema intacto.
+// La IA siempre recibe instrucciones completas; solo el codebase puede ser recortado.
+function truncatePrompt(prompt, systemInstruction, maxInputChars) {
+  if (!maxInputChars) return prompt;
+  // Reservamos espacio para el systemInstruction + separador + margen de seguridad
+  const sysLen = systemInstruction ? systemInstruction.length : 0;
+  const BUFFER = 2000; // chars de margen para metadatos y estructura JSON del request
+  const available = maxInputChars - sysLen - BUFFER;
+  if (available <= 0 || prompt.length <= available) return prompt;
+  const truncated = prompt.substring(0, available);
+  return truncated + '\n\n⚠️  [Contenido del codebase truncado para ajustarse al límite de contexto del modelo. Los archivos más importantes están incluidos arriba.]';
+}
+
 // Llama de forma adaptativa a cualquier modelo y proveedor del catálogo
 async function callProviderModel(entry, mode, systemInstruction, prompt, enableGrounding = false) {
-  const { provider, model, apiKey } = entry;
+  const { provider, model, apiKey, maxInputChars } = entry;
+
+  // Truncar prompt si el modelo tiene un límite de contexto definido
+  const safePrompt = truncatePrompt(prompt, systemInstruction, maxInputChars);
+  if (safePrompt.length < prompt.length) {
+    console.log(`    ✂️  Prompt truncado de ${prompt.length} a ${safePrompt.length} chars para [${provider.toUpperCase()}] ${model}`);
+  }
 
   // 1. Google Gemini
   if (provider === 'gemini') {
-    return await callGeminiModel(apiKey, model, mode, systemInstruction, prompt, enableGrounding);
+    return await callGeminiModel(apiKey, model, mode, systemInstruction, safePrompt, enableGrounding);
   }
 
   // 2. Cohere API V2
@@ -474,9 +496,10 @@ async function callProviderModel(entry, mode, systemInstruction, prompt, enableG
       model: model,
       messages: [
         { role: 'system', content: systemInstruction },
-        { role: 'user', content: prompt }
+        { role: 'user', content: safePrompt }
       ]
     };
+    // response_format solo para modos que requieren JSON; command-a-plus puede rechazarlo en otros modos
     if (mode.toLowerCase() === 'correct' || mode.toLowerCase() === 'objective') {
       body.response_format = { type: 'json_object' };
     }
@@ -517,7 +540,7 @@ async function callProviderModel(entry, mode, systemInstruction, prompt, enableG
     model: model,
     messages: [
       { role: 'system', content: systemInstruction },
-      { role: 'user', content: prompt }
+      { role: 'user', content: safePrompt }
     ]
   };
 
