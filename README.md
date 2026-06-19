@@ -108,15 +108,29 @@ jobs:
           fetch-depth: 0
 
       - name: Run Zenon AI
-        uses: amglogicalis/my-github-actions@main
-        with:
-          zenon-api-key: ${{ secrets.ZENON_API_KEY }}
-          groq-api-key: ${{ secrets.GROQ_API_KEY }}
-          cohere-api-key: ${{ secrets.COHERE_API_KEY }}
-          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
-          mode: ${{ github.event.inputs.mode || 'assist' }}
-          objective-file: ${{ github.event.inputs.objective-file || 'zenon_objective.md' }}
+          uses: amglogicalis/Zenon@main
+          with:
+            zenon-api-key: ${{ secrets.ZENON_API_KEY }}
+            groq-api-key: ${{ secrets.GROQ_API_KEY }}
+            cohere-api-key: ${{ secrets.COHERE_API_KEY }}
+            openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+            mode: ${{ github.event.inputs.mode || 'assist' }}
+            objective-file: ${{ github.event.inputs.objective-file || 'zenon_objective.md' }}
 ```
+
+> [!TIP]
+> **Persistencia de la Caché en GitHub Actions (Optimización de tokens):**
+> Por defecto, los runners de GitHub Actions se destruyen después de cada ejecución del workflow. Para persistir el archivo de conocimiento acumulativo `.zenon_cache.json` entre ejecuciones y beneficiarte del entrenamiento incremental en CI, te recomendamos añadir un paso de caché de GitHub justo antes del paso de Zenon:
+>
+> ```yaml
+>       - name: Restore Zenon Cache
+>         uses: actions/cache@v4
+>         with:
+>           path: .zenon_cache.json
+>           key: zenon-cache-${{ github.run_id }}
+>           restore-keys: |
+>             zenon-cache-
+> ```
 
 ---
 
