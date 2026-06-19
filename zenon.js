@@ -84,6 +84,36 @@ const PROVIDERS = {
       { id: 'meta-llama/llama-3.3-70b-instruct:free', maxInputChars: 300000 }, // Llama 3.3 70B gratuito
       { id: 'google/gemini-3.1-flash-lite',           maxInputChars: 400000 }  // Gemini Lite
     ]
+  },
+  // ===========================================================================
+  // PASO 6: Nuevos Proveedores — SambaNova, Cerebras, GitHub Models
+  // ===========================================================================
+  samba: {
+    keyName: 'SAMBA_API_KEY',
+    models: [
+      { id: 'DeepSeek-V3.2',               maxInputChars: 128000 }, // top coding + reasoning
+      { id: 'gpt-oss-120b',                maxInputChars: 128000 }, // 120B open-source
+      { id: 'Meta-Llama-3.3-70B-Instruct', maxInputChars: 128000 }, // Llama 3.3 70B
+      { id: 'gemma-4-31B-it',              maxInputChars: 128000 }, // Gemma 4 31B
+      { id: 'MiniMax-M2.7',                maxInputChars: 128000 }  // MiniMax M2.7
+    ]
+  },
+  cerebras: {
+    keyName: 'CEREBRAS_API_KEY',
+    // max_completion_tokens OBLIGATORIO en Cerebras para evitar rate-limit por token-bucketing
+    models: [
+      { id: 'gpt-oss-120b', maxInputChars: 128000, max_completion_tokens: 2048 }, // ultra-rapido
+      { id: 'zai-glm-4.7',  maxInputChars: 128000, max_completion_tokens: 2048 }  // GLM-4.7
+    ]
+  },
+  github_models: {
+    keyName: 'GITHUB_MODELS_TOKEN',
+    models: [
+      { id: 'gpt-4o',                       maxInputChars: 128000 }, // GPT-4o flagship
+      { id: 'Meta-Llama-3.1-405B-Instruct', maxInputChars: 128000 }, // Llama 405B
+      { id: 'gpt-4o-mini',                  maxInputChars: 128000 }, // GPT-4o Mini (selector)
+      { id: 'Meta-Llama-3.1-8B-Instruct',  maxInputChars: 128000 }  // Llama 8B (selector)
+    ]
   }
 };
 
@@ -93,10 +123,13 @@ const BACKOFF_BASE_MS = 2000;
 // Resuelve y agrupa las API keys configuradas en el entorno
 function getAvailableKeys(cliArgs) {
   return {
-    gemini: cliArgs.zenonApiKey || process.env.INPUT_ZENON_API_KEY || process.env.ZENON_API_KEY || process.env.GEMINI_API_KEY,
-    groq: cliArgs.groqApiKey || process.env.INPUT_GROQ_API_KEY || process.env.GROQ_API_KEY,
-    cohere: cliArgs.cohereApiKey || process.env.INPUT_COHERE_API_KEY || process.env.COHERE_API_KEY,
-    openrouter: cliArgs.openrouterApiKey || process.env.INPUT_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY
+    gemini:        cliArgs.zenonApiKey       || process.env.INPUT_ZENON_API_KEY       || process.env.ZENON_API_KEY   || process.env.GEMINI_API_KEY,
+    groq:          cliArgs.groqApiKey        || process.env.INPUT_GROQ_API_KEY        || process.env.GROQ_API_KEY,
+    cohere:        cliArgs.cohereApiKey      || process.env.INPUT_COHERE_API_KEY      || process.env.COHERE_API_KEY,
+    openrouter:    cliArgs.openrouterApiKey  || process.env.INPUT_OPENROUTER_API_KEY  || process.env.OPENROUTER_API_KEY,
+    samba:         cliArgs.sambaApiKey       || process.env.INPUT_SAMBA_API_KEY       || process.env.SAMBA_API_KEY,
+    cerebras:      cliArgs.cerebrasApiKey    || process.env.INPUT_CEREBRAS_API_KEY    || process.env.CEREBRAS_API_KEY,
+    github_models: cliArgs.githubModelsToken || process.env.INPUT_GITHUB_MODELS_TOKEN || process.env.GITHUB_MODELS_TOKEN
   };
 }
 
@@ -135,87 +168,224 @@ function analyzeRepositoryStack(files) {
   return { dominant, scores };
 }
 
-// Construye una cadena priorizada de modelos ejecutables basada en los tokens disponibles y el stack
-function buildExecutionChain(keys, stackInfo, totalSize) {
-  const chain = [];
+// =============================================================================
+// PASO 6: Selector Inteligente de Modelos con BBDD (zenon_models.json)
+// =============================================================================
 
-  // addModel ahora recibe el objeto completo {id, maxInputChars} de PROVIDERS
+/**
+ * Carga el catalogo de modelos desde zenon_models.json.
+ * Devuelve array vacio si el archivo falta o esta corrupto.
+ */
+function loadModelCatalog() {
+  const catalogPath = path.join(__dirname, 'zenon_models.json');
+  try {
+    if (fs.existsSync(catalogPath)) {
+      return JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
+    }
+  } catch (e) {
+    console.warn('  Warning: No se pudo leer zenon_models.json. Usando cadena por defecto.');
+  }
+  return [];
+}
+
+/**
+ * Cadena determinista de fallback — usada cuando el selector IA no esta disponible.
+ * Cubre todos los proveedores en orden de prioridad y capacidad.
+ */
+function buildDefaultChain(keys) {
+  const chain = [];
   const addModel = (provider, modelObj) => {
     if (keys[provider] && modelObj) {
-      chain.push({ provider, model: modelObj.id, maxInputChars: modelObj.maxInputChars, apiKey: keys[provider] });
+      chain.push({
+        provider,
+        model:                 modelObj.id,
+        maxInputChars:         modelObj.maxInputChars,
+        max_completion_tokens: modelObj.max_completion_tokens,
+        apiKey:                keys[provider]
+      });
     }
   };
+  const getAt = (provider, index) => PROVIDERS[provider] && PROVIDERS[provider].models[index];
 
-  // Ayudante para obtener el objeto de modelo en un índice específico de PROVIDERS
-  const getModelAt = (provider, index) => {
-    return PROVIDERS[provider] && PROVIDERS[provider].models[index];
-  };
+  // Fase 1: Insignia — los mejores modelos de cada proveedor disponible
+  addModel('gemini',        getAt('gemini', 0));        // gemini-2.5-flash (1M ctx)
+  addModel('samba',         getAt('samba', 0));         // DeepSeek-V3.2
+  addModel('cerebras',      getAt('cerebras', 0));      // gpt-oss-120b ultra-rapido
+  addModel('github_models', getAt('github_models', 0)); // gpt-4o
+  addModel('cohere',        getAt('cohere', 0));        // command-a-plus-05-2026
+  addModel('groq',          getAt('groq', 0));          // llama-3.3-70b-versatile
 
-  // Fase 1: Modelos Insignia (Los mejores para cada tarea)
-  // Siempre ponemos Gemini-2.5-Flash al principio por su ventana de contexto masiva.
-  addModel('gemini', getModelAt('gemini', 0)); // gemini-2.5-flash
+  // Fase 2: Fallbacks de Nivel Medio
+  addModel('gemini',        getAt('gemini', 1));        // gemini-flash-lite-latest
+  addModel('samba',         getAt('samba', 1));         // gpt-oss-120b (samba)
+  addModel('github_models', getAt('github_models', 1)); // Meta-Llama-3.1-405B
+  addModel('cohere',        getAt('cohere', 1));        // command-r-plus-08-2024
+  addModel('groq',          getAt('groq', 1));          // llama-4-scout
+  addModel('openrouter',    getAt('openrouter', 0));    // cohere/north-mini-code:free
+  addModel('openrouter',    getAt('openrouter', 1));    // qwen3-coder:free
 
-  // Alternamos los modelos insignia de los demás proveedores
-  if (keys['cohere']) {
-    addModel('cohere', getModelAt('cohere', 0)); // command-a-plus-05-2026
-  }
+  // Fase 3: Ultimo Recurso
+  addModel('gemini',        getAt('gemini', 2));        // gemini-3.1-flash-lite
+  addModel('samba',         getAt('samba', 2));         // Meta-Llama-3.3-70B (samba)
+  addModel('cerebras',      getAt('cerebras', 1));      // zai-glm-4.7
+  addModel('github_models', getAt('github_models', 2)); // gpt-4o-mini
+  addModel('github_models', getAt('github_models', 3)); // Meta-Llama-3.1-8B
+  addModel('cohere',        getAt('cohere', 2));        // command-a-03-2025
+  addModel('cohere',        getAt('cohere', 3));        // command-r-08-2024
+  addModel('groq',          getAt('groq', 2));          // qwen3.6-27b
+  addModel('groq',          getAt('groq', 3));          // llama-3.1-8b-instant
+  addModel('openrouter',    getAt('openrouter', 2));    // gemma-4-31b-it:free
+  addModel('openrouter',    getAt('openrouter', 3));    // llama-3.3-70b-instruct:free
+  addModel('openrouter',    getAt('openrouter', 4));    // gemini-3.1-flash-lite
+  addModel('gemini',        getAt('gemini', 3));        // gemma-4-31b-it
+  addModel('samba',         getAt('samba', 3));         // gemma-4-31B-it (samba)
+  addModel('samba',         getAt('samba', 4));         // MiniMax-M2.7
 
-  // Groq siempre se incluye — el prompt se truncará según maxInputChars del modelo
-  if (keys['groq']) {
-    addModel('groq', getModelAt('groq', 0)); // llama-3.3-70b-versatile
-  }
-
-  // Fase 2: Fallbacks de Nivel Medio (Alta disponibilidad y velocidad)
-  addModel('gemini', getModelAt('gemini', 1)); // gemini-flash-lite-latest
-
-  if (keys['cohere']) {
-    addModel('cohere', getModelAt('cohere', 1)); // command-r-plus-08-2024
-  }
-
-  if (keys['groq']) {
-    addModel('groq', getModelAt('groq', 1)); // llama-4-scout
-  }
-
-  if (keys['openrouter']) {
-    addModel('openrouter', getModelAt('openrouter', 0)); // cohere/north-mini-code:free
-    addModel('openrouter', getModelAt('openrouter', 1)); // qwen3-coder:free
-  }
-
-  // Fase 3: Fallbacks de Nivel Bajo y Último Recurso
-  addModel('gemini', getModelAt('gemini', 2)); // gemini-3.1-flash-lite
-
-  if (keys['cohere']) {
-    addModel('cohere', getModelAt('cohere', 2)); // command-a-03-2025
-    addModel('cohere', getModelAt('cohere', 3)); // command-r-08-2024
-  }
-
-  if (keys['groq']) {
-    addModel('groq', getModelAt('groq', 2)); // qwen3.6-27b
-    addModel('groq', getModelAt('groq', 3)); // llama-3.1-8b-instant
-  }
-
-  if (keys['openrouter']) {
-    addModel('openrouter', getModelAt('openrouter', 2)); // gemma-4-31b-it:free
-    addModel('openrouter', getModelAt('openrouter', 3)); // llama-3.3-70b-instruct:free
-    addModel('openrouter', getModelAt('openrouter', 4)); // gemini-3.1-flash-lite
-  }
-
-  addModel('gemini', getModelAt('gemini', 3)); // gemma-4-31b-it
-
-  // Filtrar duplicados en la cadena (manteniendo el primer orden de prioridad)
+  // Deduplicar manteniendo orden de prioridad
   const seen = new Set();
-  const uniqueChain = [];
-  for (const entry of chain) {
-    if (entry.model) { // Evitar modelos indefinidos si el índice no existe
-      const uniqueKey = `${entry.provider}:${entry.model}`;
-      if (!seen.has(uniqueKey)) {
-        seen.add(uniqueKey);
-        uniqueChain.push(entry);
-      }
-    }
-  }
+  return chain.filter(e => {
+    if (!e.model) return false;
+    const k = e.provider + ':' + e.model;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
 
-  return uniqueChain;
+/**
+ * Modelos fijos ligeros usados UNICAMENTE para la fase de seleccion inteligente.
+ * Son rapidos y baratos; su unica tarea es elegir la cadena optima del catalogo.
+ */
+const SELECTOR_MODELS = [
+  { provider: 'gemini',        model: 'gemini-3.1-flash-lite' },
+  { provider: 'groq',          model: 'llama-3.1-8b-instant'  },
+  { provider: 'github_models', model: 'gpt-4o-mini'           }
+];
+
+/**
+ * Convierte una seleccion de IA al formato interno de cadena de callWithFallback.
+ */
+function buildChainFromSelection(selection, keys) {
+  const chain = [];
+  const seen  = new Set();
+
+  for (const item of selection) {
+    const { provider, api_model_id } = item;
+    if (!provider || !api_model_id || !keys[provider]) continue;
+    const uniqueKey = provider + ':' + api_model_id;
+    if (seen.has(uniqueKey)) continue;
+
+    const providerData = PROVIDERS[provider];
+    if (!providerData) continue;
+    const modelObj = providerData.models.find(m => m.id === api_model_id);
+    if (!modelObj) continue;
+
+    seen.add(uniqueKey);
+    chain.push({
+      provider,
+      model:                 api_model_id,
+      maxInputChars:         modelObj.maxInputChars,
+      max_completion_tokens: modelObj.max_completion_tokens,
+      apiKey:                keys[provider]
+    });
+  }
+  return chain;
+}
+
+/**
+ * Selector inteligente: llama a un modelo ligero para que analice el contexto
+ * del repo y elija la cadena optima consultando zenon_models.json.
+ * Devuelve null si el selector falla (el caller usa buildDefaultChain).
+ */
+async function selectModelsWithAI(keys, stackInfo, mode, totalSize) {
+  // Sub-cadena del selector con los modelos fijos disponibles
+  const selectorChain = SELECTOR_MODELS
+    .filter(s => keys[s.provider])
+    .map(s => {
+      const providerData = PROVIDERS[s.provider];
+      if (!providerData) return null;
+      const modelObj = providerData.models.find(m => m.id === s.model);
+      if (!modelObj) return null;
+      return {
+        provider:              s.provider,
+        model:                 s.model,
+        maxInputChars:         modelObj.maxInputChars,
+        max_completion_tokens: modelObj.max_completion_tokens,
+        apiKey:                keys[s.provider]
+      };
+    })
+    .filter(Boolean);
+
+  if (selectorChain.length === 0) return null;
+
+  const catalog = loadModelCatalog();
+  if (catalog.length === 0) return null;
+
+  // Solo incluir modelos de proveedores con key configurada
+  const availableProviders = Object.keys(keys).filter(p => keys[p]);
+  const availableModels = catalog
+    .map(entry => ({
+      model_id:       entry.model_id,
+      description:    entry.description,
+      specialization: entry.specialization,
+      providers:      (entry.providers || []).filter(p => availableProviders.includes(p.provider))
+    }))
+    .filter(entry => entry.providers.length > 0);
+
+  if (availableModels.length === 0) return null;
+
+  const sizeMB    = (totalSize / 1048576).toFixed(2);
+  const sizeLabel = totalSize > 500000 ? 'MUY GRANDE (>500KB)'
+                  : totalSize > 100000 ? 'GRANDE (>100KB)'
+                  : totalSize > 30000  ? 'MEDIO (>30KB)'
+                  : 'PEQUENO (<30KB)';
+
+  const modeDesc = mode === 'correct'   ? 'correccion automatica de bugs, salida JSON estructurada'
+                 : mode === 'objective' ? 'implementacion de objetivo de desarrollo, salida JSON estructurada'
+                 : 'revision de codigo, produce informe Markdown';
+
+  const selectorSystemInstruction =
+    'Eres el motor de seleccion de modelos de IA de Zenon, una herramienta de analisis de codigo. ' +
+    'Tu UNICA tarea es seleccionar la lista ordenada de mejores modelos para una tarea concreta. ' +
+    'Devuelve SOLO JSON valido. Sin explicaciones. Sin markdown.';
+
+  const selectorPrompt =
+    'Selecciona los 4-5 mejores modelos del catalogo disponible para esta tarea:\n\n' +
+    'CONTEXTO DE TAREA:\n' +
+    '- Modo: "' + mode + '" -- ' + modeDesc + '\n' +
+    '- Stack dominante: ' + stackInfo.dominant.toUpperCase() + '\n' +
+    '- Tamano del codebase: ' + sizeMB + ' MB (' + sizeLabel + ')\n\n' +
+    'MODELOS DISPONIBLES (solo estos tienen API keys configuradas):\n' +
+    JSON.stringify(availableModels, null, 2) + '\n\n' +
+    'REGLAS DE SELECCION:\n' +
+    '1. Para modo "correct" u "objective": prioriza modelos con especializacion "code" o "reasoning"\n' +
+    '2. Para codebases GRANDES o MUY GRANDES (>100KB): prioriza providers con maxInputChars mas alto\n' +
+    '3. El primer modelo de la cadena debe ser el mas capaz disponible\n' +
+    '4. Incluye modelos de al menos 2 providers diferentes para resilencia\n' +
+    '5. No repitas el mismo par provider+api_model_id\n\n' +
+    'Devuelve SOLO este JSON (sin markdown, sin explicacion):\n' +
+    '{\n' +
+    '  "chain": [\n' +
+    '    { "provider": "<nombre_provider>", "api_model_id": "<api_model_id_del_catalogo>" },\n' +
+    '    { "provider": "<nombre_provider>", "api_model_id": "<api_model_id_del_catalogo>" }\n' +
+    '  ]\n' +
+    '}';
+
+  try {
+    const selLabel = selectorChain[0].provider.toUpperCase() + '/' + selectorChain[0].model;
+    console.log('  🧠 Selector IA ejecutandose con: ' + selLabel);
+    const result = await callWithFallback(selectorChain, 'assist', selectorSystemInstruction, selectorPrompt);
+    const parsed = extractJSON(result.text);
+    if (parsed && Array.isArray(parsed.chain) && parsed.chain.length > 0) {
+      const chainStr = parsed.chain.map(m => m.provider + '/' + m.api_model_id).join(' -> ');
+      console.log('  ✅ Seleccion IA: ' + parsed.chain.length + ' modelos -> ' + chainStr);
+      return parsed.chain;
+    }
+    console.warn('  ⚠️  Selector IA devolvio JSON invalido. Usando cadena por defecto...');
+  } catch (err) {
+    console.warn('  ⚠️  Selector IA fallo (' + err.message + '). Usando cadena por defecto...');
+  }
+  return null;
 }
 
 // Default exclusions
@@ -499,6 +669,19 @@ const MODEL_PROFILES = {
   'google/gemma-4-31b-it:free':              { tier: 'medium' },
   'meta-llama/llama-3.3-70b-instruct:free':  { tier: 'medium' },
   'google/gemini-3.1-flash-lite':            { tier: 'large'  },
+  // SambaNova
+  'DeepSeek-V3.2':                           { tier: 'medium' },
+  'gpt-oss-120b':                            { tier: 'medium' },
+  'Meta-Llama-3.3-70B-Instruct':             { tier: 'medium' },
+  'gemma-4-31B-it':                          { tier: 'medium' },
+  'MiniMax-M2.7':                            { tier: 'medium' },
+  // Cerebras
+  'zai-glm-4.7':                             { tier: 'medium' },
+  // GitHub Models
+  'gpt-4o':                                  { tier: 'medium' },
+  'Meta-Llama-3.1-405B-Instruct':            { tier: 'medium' },
+  'gpt-4o-mini':                             { tier: 'medium' },
+  'Meta-Llama-3.1-8B-Instruct':             { tier: 'medium' }
 };
 
 /**
@@ -598,7 +781,7 @@ function extractTextFromContent(content) {
 
 // Llama de forma adaptativa a cualquier modelo y proveedor del catálogo
 async function callProviderModel(entry, mode, systemInstruction, prompt, enableGrounding = false) {
-  const { provider, model, apiKey, maxInputChars } = entry;
+  const { provider, model, apiKey, maxInputChars, max_completion_tokens } = entry;
 
   // Adapt system instruction verbosity to this model's context tier
   const adaptedInstruction = adaptSystemInstruction(systemInstruction, model);
@@ -660,12 +843,18 @@ async function callProviderModel(entry, mode, systemInstruction, prompt, enableG
     throw new Error('Cohere V2 API returned an empty or invalid message content.');
   }
 
-  // 3. Proveedores compatibles con formato OpenAI (Groq, OpenRouter)
+  // 3. Proveedores compatibles con formato OpenAI (Groq, OpenRouter, SambaNova, Cerebras, GitHub Models)
   let apiBase = '';
   if (provider === 'groq') {
     apiBase = 'https://api.groq.com/openai/v1';
   } else if (provider === 'openrouter') {
     apiBase = 'https://openrouter.ai/api/v1';
+  } else if (provider === 'samba') {
+    apiBase = 'https://api.sambanova.ai/v1';
+  } else if (provider === 'cerebras') {
+    apiBase = 'https://api.cerebras.ai/v1';
+  } else if (provider === 'github_models') {
+    apiBase = 'https://models.inference.ai.azure.com';
   }
 
   const url = `${apiBase}/chat/completions`;
@@ -677,7 +866,11 @@ async function callProviderModel(entry, mode, systemInstruction, prompt, enableG
     ]
   };
 
-  if (mode.toLowerCase() === 'correct') {
+  if (max_completion_tokens !== undefined) {
+    body.max_completion_tokens = max_completion_tokens;
+  }
+
+  if (mode.toLowerCase() === 'correct' || mode.toLowerCase() === 'objective') {
     body.response_format = { type: 'json_object' };
   }
 
@@ -1011,7 +1204,16 @@ async function main() {
     } catch (e) {}
   }
 
-  const chain = buildExecutionChain(keys, stackInfo, totalSize);
+  // Intentar la selección inteligente mediante IA primero
+  const aiSelection = await selectModelsWithAI(keys, stackInfo, mode, totalSize);
+  let chain = null;
+  if (aiSelection) {
+    chain = buildChainFromSelection(aiSelection, keys);
+  }
+  if (!chain || chain.length === 0) {
+    chain = buildDefaultChain(keys);
+  }
+
   console.log(`Dominant stack detected: ${stackInfo.dominant.toUpperCase()}`);
   console.log(`Execution chain: ${chain.map(c => `${c.provider.toUpperCase()}:${c.model}`).join(' → ')}`);
   console.log(`🤖 IA Principal elegida para tu stack: [${chain[0].provider.toUpperCase()}] ${chain[0].model}`);
