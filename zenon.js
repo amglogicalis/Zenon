@@ -897,6 +897,20 @@ async function main() {
   let cacheLoaded = false;
   let previousKnowledge = '';
 
+  if (!fs.existsSync(CACHE_FILE)) {
+    try {
+      ensureGitignore();
+      fs.writeFileSync(CACHE_FILE, JSON.stringify({
+        fingerprint: '',
+        knowledge: '',
+        updatedAt: ''
+      }, null, 2), 'utf8');
+      console.log('ℹ️  Creado archivo de caché inicial (.zenon_cache.json) en la raíz del repositorio.');
+    } catch (e) {
+      // Ignorar fallos de inicialización silenciosamente
+    }
+  }
+
   if (fs.existsSync(CACHE_FILE)) {
     try {
       const cacheData = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
