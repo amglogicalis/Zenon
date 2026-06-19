@@ -8,3 +8,7 @@ node_modules/
 .DS_Store
 Thumbs.db
 .zenon_cache.json
+
+.env
+
+zenon_model_info.txt
