@@ -458,7 +458,14 @@ async function callGeminiModel(apiKey, model, mode, systemInstruction, prompt, e
     console.warn(`Warning: Generation completed with reason: ${candidate.finishReason}`);
   }
 
-  return candidate.content.parts[0].text;
+  const parts = candidate.content ? candidate.content.parts : undefined;
+  if (Array.isArray(parts) && parts.length > 0) {
+    const extracted = extractTextFromContent(parts[0].text);
+    if (extracted) {
+      return extracted;
+    }
+  }
+  throw new Error('Gemini API returned an empty or invalid content parts.');
 }
 
 // Trunca el prompt de usuario si excede el límite del modelo, preservando el sistema intacto.
@@ -472,6 +479,32 @@ function truncatePrompt(prompt, systemInstruction, maxInputChars) {
   if (available <= 0 || prompt.length <= available) return prompt;
   const truncated = prompt.substring(0, available);
   return truncated + '\n\n⚠️  [Contenido del codebase truncado para ajustarse al límite de contexto del modelo. Los archivos más importantes están incluidos arriba.]';
+}
+
+// Ayudante ultra-defensivo para extraer texto de la respuesta de cualquier IA (String, Array o Estructura Compleja)
+function extractTextFromContent(content) {
+  if (content === null || content === undefined) {
+    return '';
+  }
+  if (typeof content === 'string') {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    return content.map(item => {
+      if (item === null || item === undefined) return '';
+      if (typeof item === 'string') return item;
+      if (typeof item.text === 'string') return item.text;
+      if (item.text) return String(item.text);
+      return '';
+    }).join('').trim();
+  }
+  if (typeof content.text === 'string') {
+    return content.text;
+  }
+  if (content.text) {
+    return String(content.text);
+  }
+  return '';
 }
 
 // Llama de forma adaptativa a cualquier modelo y proveedor del catálogo
@@ -521,8 +554,11 @@ async function callProviderModel(entry, mode, systemInstruction, prompt, enableG
     }
 
     const data = await response.json();
-    if (data.message && data.message.content && data.message.content.length > 0) {
-      return data.message.content[0].text;
+    if (data.message && data.message.content !== undefined && data.message.content !== null) {
+      const extracted = extractTextFromContent(data.message.content);
+      if (extracted) {
+        return extracted;
+      }
     }
     throw new Error('Cohere V2 API returned an empty or invalid message content.');
   }
@@ -576,7 +612,12 @@ async function callProviderModel(entry, mode, systemInstruction, prompt, enableG
     throw new Error(`${provider.toUpperCase()} returned no choices in response.`);
   }
 
-  return data.choices[0].message.content;
+  const content = data.choices[0].message ? data.choices[0].message.content : undefined;
+  const extracted = extractTextFromContent(content);
+  if (extracted) {
+    return extracted;
+  }
+  throw new Error(`${provider.toUpperCase()} returned an empty or invalid content in message choices.`);
 }
 
 // =============================================================================
