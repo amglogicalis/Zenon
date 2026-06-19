@@ -33,7 +33,7 @@ Documento de referencia para el desarrollo incremental de Zenon. Cada paso se im
 ---
 
 ## Paso 5: Optimización de Prompts y Estructuración de Respuestas - PLANIFICADO ⏳
-- **Afinamiento y Optimización de Prompts:** Diseñar system instructions ultra-precisas que mitiguen alucinaciones, redundancias y bucles infinitos observados en modelos Mixture-of-Experts (MoE) grandes al digerir codebases extensas.
+- **Afinamiento y Optimización de Prompts:** Diseñar system instructions ultra-precisas que mitiguen alucinaciones, redundancias y bucles infinitos observados en modelos Mixture-of-Experts (MoE) grandes al digerir codebases extensas y en general en todos los modelos optimizarlo al maximo.
 - **Profundidad y Calidad Técnica:** Reestructurar los prompts de revisión para evitar monólogos internos introductorios y forzar a las IAs a ir directo a aportaciones técnicas valiosas y refactorizaciones críticas.
 - **Enfoque Estético en Reportes:** Exigir un formato estructurado en Markdown limpio con tablas comparativas, listas claras y bloques de alertas (`> [!WARNING]`, `> [!IMPORTANT]`) similares a los de Gemini 2.5 y Command R+.
 - **Documentación de Directivas:** Clarificar estas especificaciones de prompts e instrucciones también en la guía del modo `objective` del README.
@@ -41,6 +41,6 @@ Documento de referencia para el desarrollo incremental de Zenon. Cada paso se im
 ---
 
 ## Paso 6: Expansión de Modelos de Inteligencia Artificial - PLANIFICADO ⏳
-- Integración de nuevos proveedores y modelos de lenguaje de última generación.
-- Soporte para modelos locales open-weight y modelos especializados en programación (e.g., Llama 4, Qwen Coder, DeepSeek R1).
-- Optimización de consumo de tokens y refinamiento de la lógica de enrutamiento basada en las características de las APIs más recientes.
+- Integración de nuevos proveedores y modelos de lenguaje de última generación, estos serán presentados por el usuario, posiblemente habra que elegir los mejores respecto a rentabilidad/potencia
+- Investigar el proveedor/es finalmente seleccionado/s para que las llamadas a la api, los prompts y demas funcionen perfecto, realizando una investigacion profunda y exhaustiva sobre como llamar a la api corerctamente de estos modelos nuevos y tener en cuenta sus restricciones y limites de prompt
+

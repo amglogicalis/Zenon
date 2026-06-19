@@ -895,10 +895,14 @@ async function main() {
   const fingerprint = computeFingerprint(files);
   let cachedKnowledge = '';
   let cacheLoaded = false;
+  let previousKnowledge = '';
 
   if (fs.existsSync(CACHE_FILE)) {
     try {
       const cacheData = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+      if (cacheData.knowledge) {
+        previousKnowledge = cacheData.knowledge;
+      }
       if (cacheData.fingerprint === fingerprint && cacheData.knowledge) {
         cachedKnowledge = cacheData.knowledge;
         cacheLoaded = true;
@@ -929,7 +933,28 @@ Identify:
 Apply your training knowledge of software engineering best practices, security guidelines, and documentation for the specific technologies found in this codebase to enrich your analysis.
 Provide a clear, concise, and structured summary of your findings. This summary will be cached and used by Zenon to guide code reviews and corrections.`;
 
-    const trainingUserPrompt = `Here are the codebase files for training:
+    let trainingUserPrompt = '';
+    if (previousKnowledge) {
+      console.log('🧠 Detectado conocimiento previo acumulado en la caché. Iniciando entrenamiento incremental...');
+      trainingUserPrompt = `We have an existing knowledge profile for this codebase:
+
+--- PREVIOUS KNOWLEDGE PROFILE ---
+${previousKnowledge}
+---------------------------------
+
+And here is the current state of the codebase files:
+
+${codebasePayload}
+
+Analyze the codebase files above and compare them with the previous knowledge profile. 
+Based on the current files and your engineering knowledge:
+- Update, refine, and enrich the previous knowledge profile.
+- Preserve correct structural patterns and architectural findings that remain valid.
+- Update any tech stack descriptions, conventions, libraries, risks, or code gaps that have changed or are new.
+- Return a single, updated, and consolidated codebase knowledge profile.
+Return the updated project knowledge profile now.`;
+    } else {
+      trainingUserPrompt = `Here are the codebase files for training:
 
 ${codebasePayload}
 
@@ -939,6 +964,7 @@ Analyze the codebase above. Based on the files and your engineering knowledge:
 - Flag any notable risks, known library issues, or best-practice gaps you can infer.
 - Return a concise, structured knowledge profile that will help a future AI code reviewer understand this project.
 Return the learned project knowledge profile now.`;
+    }
 
     try {
       console.log('🔍 Realizando búsquedas y autoentrenamiento...');
