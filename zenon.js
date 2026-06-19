@@ -107,7 +107,7 @@ const PROVIDERS = {
     ]
   },
   github_models: {
-    keyName: 'GITHUB_MODELS_TOKEN',
+    keyName: 'GH_MODELS_TOKEN',
     models: [
       { id: 'gpt-4o',                       maxInputChars: 128000 }, // GPT-4o flagship
       { id: 'Meta-Llama-3.1-405B-Instruct', maxInputChars: 128000 }, // Llama 405B
@@ -129,7 +129,7 @@ function getAvailableKeys(cliArgs) {
     openrouter:    cliArgs.openrouterApiKey  || process.env.INPUT_OPENROUTER_API_KEY  || process.env.OPENROUTER_API_KEY,
     samba:         cliArgs.sambaApiKey       || process.env.INPUT_SAMBA_API_KEY       || process.env.SAMBA_API_KEY,
     cerebras:      cliArgs.cerebrasApiKey    || process.env.INPUT_CEREBRAS_API_KEY    || process.env.CEREBRAS_API_KEY,
-    github_models: cliArgs.githubModelsToken || process.env.INPUT_GITHUB_MODELS_TOKEN || process.env.GITHUB_MODELS_TOKEN
+    github_models: cliArgs.ghModelsToken     || cliArgs.githubModelsToken             || process.env.INPUT_GH_MODELS_TOKEN || process.env.GH_MODELS_TOKEN || process.env.INPUT_GITHUB_MODELS_TOKEN || process.env.GITHUB_MODELS_TOKEN
   };
 }
 
@@ -958,7 +958,7 @@ function isLoopingResponse(text) {
 
 async function callWithFallback(chain, mode, systemInstruction, prompt, enableGrounding = false) {
   if (chain.length === 0) {
-    throw new Error('No API keys configured. Please configure at least one of: ZENON_API_KEY, GROQ_API_KEY, COHERE_API_KEY, OPENROUTER_API_KEY.');
+    throw new Error('No API keys configured. Please configure at least one of: ZENON_API_KEY, GROQ_API_KEY, COHERE_API_KEY, OPENROUTER_API_KEY, SAMBA_API_KEY, CEREBRAS_API_KEY, GH_MODELS_TOKEN.');
   }
 
   let lastError;
@@ -1151,7 +1151,7 @@ async function main() {
     console.error('');
     console.error('❌ Ninguna API Key de proveedor está configurada.');
     console.error('   Configura al menos una de las siguientes variables de entorno:');
-    console.error('     ZENON_API_KEY, GROQ_API_KEY, DEEPSEEK_API_KEY, COHERE_API_KEY, OPENROUTER_API_KEY');
+    console.error('     ZENON_API_KEY, GROQ_API_KEY, COHERE_API_KEY, OPENROUTER_API_KEY, SAMBA_API_KEY, CEREBRAS_API_KEY, GH_MODELS_TOKEN');
     process.exit(1);
   }
 

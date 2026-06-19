@@ -63,6 +63,9 @@ Obtén tus credenciales gratuitas de los proveedores que desees usar y añádela
 *   `GROQ_API_KEY` *(Opcional - Clave de Groq Console)*
 *   `COHERE_API_KEY` *(Opcional - Clave de Cohere Dashboard)*
 *   `OPENROUTER_API_KEY` *(Opcional - Clave de OpenRouter)*
+*   `SAMBA_API_KEY` *(Opcional - Clave de SambaNova)*
+*   `CEREBRAS_API_KEY` *(Opcional - Clave de Cerebras)*
+*   `GH_MODELS_TOKEN` *(Opcional - Token de acceso personal de GitHub para GitHub Models, no puede empezar con GITHUB_)*
 
 ### 2. Crear la Carpeta de Workflows y Configurar el Archivo
 En el repositorio que quieres auditar, crea las carpetas `.github/workflows/` si no existen y añade el archivo `zenon.yml` con el siguiente contenido:
@@ -126,6 +129,9 @@ jobs:
           groq-api-key: ${{ secrets.GROQ_API_KEY }}
           cohere-api-key: ${{ secrets.COHERE_API_KEY }}
           openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          samba-api-key: ${{ secrets.SAMBA_API_KEY }}
+          cerebras-api-key: ${{ secrets.CEREBRAS_API_KEY }}
+          gh-models-token: ${{ secrets.GH_MODELS_TOKEN }}
           mode: ${{ github.event.inputs.mode || 'assist' }}
           objective-file: ${{ github.event.inputs.objective-file || 'zenon_objective.md' }}
 ```
@@ -162,6 +168,9 @@ Puedes ejecutar Zenon directamente en tu máquina local durante el desarrollo si
     GROQ_API_KEY=tu_clave_groq_aqui
     COHERE_API_KEY=tu_clave_cohere_aqui
     OPENROUTER_API_KEY=tu_clave_openrouter_aqui
+    SAMBA_API_KEY=tu_clave_sambanova_aqui
+    CEREBRAS_API_KEY=tu_clave_cerebras_aqui
+    GH_MODELS_TOKEN=tu_token_pat_github_aqui
     ```
 
 ### Ejecutar con los Wrappers CLI
@@ -202,6 +211,9 @@ Hemos creado dos scripts ligeros para automatizar la carga de variables del arch
 | `groq-api-key` | API Key para Groq. | No | — |
 | `cohere-api-key` | API Key para Cohere. | No | — |
 | `openrouter-api-key` | API Key para OpenRouter. | No | — |
+| `samba-api-key` | API Key para SambaNova. | No | — |
+| `cerebras-api-key` | API Key para Cerebras. | No | — |
+| `gh-models-token` | Token personal para GitHub Models (no debe empezar por GITHUB_). | No | — |
 | `mode` | Modo de ejecución: `assist`, `correct` u `objective`. | No | `assist` |
 | `objective-file` | Archivo Markdown de directivas para el modo `objective`. | No | `zenon_objective.md` |
 | `exclude` | Archivos/rutas separados por comas que se deben ignorar. | No | `""` |

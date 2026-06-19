@@ -30,7 +30,7 @@ inputs:
     description: 'Cerebras API Key (optional - configure as a repository secret)'
     required: false
     default: ''
-  github-models-token:
+  gh-models-token:
     description: 'GitHub Models Token / PAT (optional - configure as a repository secret)'
     required: false
     default: ''
@@ -68,7 +68,7 @@ runs:
         echo "OpenRouter   : $([ -n "$INPUT_OPENROUTER_API_KEY" ] && echo 'set ✅' || echo 'not set ❌')"
         echo "Samba Key    : $([ -n "$INPUT_SAMBA_API_KEY" ] && echo 'set ✅' || echo 'not set ❌')"
         echo "Cerebras Key : $([ -n "$INPUT_CEREBRAS_API_KEY" ] && echo 'set ✅' || echo 'not set ❌')"
-        echo "GitHubModels : $([ -n "$INPUT_GITHUB_MODELS_TOKEN" ] && echo 'set ✅' || echo 'not set ❌')"
+        echo "GitHubModels : $([ -n "$INPUT_GH_MODELS_TOKEN" ] && echo 'set ✅' || echo 'not set ❌')"
         if [ "$INPUT_MODE" = "objective" ]; then
           echo "Objective    : $INPUT_OBJECTIVE_FILE"
         fi
@@ -80,7 +80,7 @@ runs:
         INPUT_OPENROUTER_API_KEY: ${{ inputs.openrouter-api-key }}
         INPUT_SAMBA_API_KEY: ${{ inputs.samba-api-key }}
         INPUT_CEREBRAS_API_KEY: ${{ inputs.cerebras-api-key }}
-        INPUT_GITHUB_MODELS_TOKEN: ${{ inputs.github-models-token }}
+        INPUT_GH_MODELS_TOKEN: ${{ inputs.gh-models-token }}
         INPUT_MODE: ${{ inputs.mode }}
 
     - name: Run Zenon AI Assistant
@@ -93,7 +93,7 @@ runs:
         INPUT_OPENROUTER_API_KEY: ${{ inputs.openrouter-api-key }}
         INPUT_SAMBA_API_KEY: ${{ inputs.samba-api-key }}
         INPUT_CEREBRAS_API_KEY: ${{ inputs.cerebras-api-key }}
-        INPUT_GITHUB_MODELS_TOKEN: ${{ inputs.github-models-token }}
+        INPUT_GH_MODELS_TOKEN: ${{ inputs.gh-models-token }}
         INPUT_MODE: ${{ inputs.mode }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         INPUT_EXCLUDE: ${{ inputs.exclude }}

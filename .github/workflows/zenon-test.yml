@@ -56,6 +56,6 @@ jobs:
           openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
           samba-api-key: ${{ secrets.SAMBA_API_KEY }}
           cerebras-api-key: ${{ secrets.CEREBRAS_API_KEY }}
-          github-models-token: ${{ secrets.GITHUB_MODELS_TOKEN }}
+          gh-models-token: ${{ secrets.TOKEN_GH }}
           mode: ${{ github.event.inputs.mode || 'assist' }}
           objective-file: ${{ github.event.inputs.objective-file || 'zenon_objective.md' }}
