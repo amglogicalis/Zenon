@@ -623,6 +623,49 @@ async function callProviderModel(entry, mode, systemInstruction, prompt, enableG
 // =============================================================================
 // PASO 1 y 3: Fallback Chain across Providers with Exponential Backoff
 // =============================================================================
+/**
+ * Extracts the first valid JSON object or array from a raw string.
+ * Handles markdown fences (```json ... ```) and leading/trailing garbage text.
+ */
+function extractJSON(raw) {
+  if (!raw) return null;
+  // Strip markdown fences if present
+  const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const cleaned = fenceMatch ? fenceMatch[1].trim() : raw.trim();
+  // Try direct parse first
+  try { return JSON.parse(cleaned); } catch (_) {}
+  // Find the outermost { ... } or [ ... ] block
+  for (const [open, close] of [['{', '}'], ['[', ']']]) {
+    const start = cleaned.indexOf(open);
+    if (start === -1) continue;
+    let depth = 0;
+    for (let i = start; i < cleaned.length; i++) {
+      if (cleaned[i] === open) depth++;
+      else if (cleaned[i] === close) depth--;
+      if (depth === 0) {
+        try { return JSON.parse(cleaned.slice(start, i + 1)); } catch (_) { break; }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Detects infinite-loop responses: the same sentence repeated many times.
+ * Returns true if the model is clearly stuck in a loop.
+ */
+function isLoopingResponse(text) {
+  if (!text || text.length < 200) return false;
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length < 5) return false;
+  // Count how many times the most frequent line appears
+  const freq = {};
+  for (const line of lines) { freq[line] = (freq[line] || 0) + 1; }
+  const maxFreq = Math.max(...Object.values(freq));
+  // If any single line repeats more than 5 times and covers >40% of lines → loop
+  return maxFreq > 5 && (maxFreq / lines.length) > 0.4;
+}
+
 async function callWithFallback(chain, mode, systemInstruction, prompt, enableGrounding = false) {
   if (chain.length === 0) {
     throw new Error('No API keys configured. Please configure at least one of: ZENON_API_KEY, GROQ_API_KEY, COHERE_API_KEY, OPENROUTER_API_KEY.');
@@ -643,6 +686,14 @@ async function callWithFallback(chain, mode, systemInstruction, prompt, enableGr
       }
 
       const result = await callProviderModel(entry, mode, systemInstruction, prompt, enableGrounding);
+
+      // Detect infinite-loop responses before accepting the result
+      if (isLoopingResponse(result)) {
+        console.warn(`  ⚠️  Modelo "${modelLabel}" devolvió una respuesta en bucle infinito. Descartando y cambiando al siguiente...`);
+        lastError = new Error('Looping response detected');
+        continue;
+      }
+
       if (i > 0) {
         console.log(`  ✅ Fallback exitoso con modelo: ${modelLabel}`);
       }
@@ -1119,13 +1170,25 @@ Perform a deep technical review. Return ONLY the Markdown report — no preamble
     console.log(`\n✅ Análisis completado con éxito utilizando la IA: [${analysisResult.provider.toUpperCase()}] ${analysisResult.model}`);
 
     if (isCorrectMode || isObjectiveMode) {
-      let result;
-      try {
-        result = JSON.parse(rawResponse);
-      } catch (parseErr) {
-        console.error('Failed to parse correction response. Raw output was:');
-        console.log(rawResponse);
-        throw new Error('Response was not valid JSON: ' + parseErr.message);
+      let result = extractJSON(rawResponse);
+      if (!result) {
+        // The model that responded could not produce valid JSON. Retry with the remaining chain.
+        console.warn(`  ⚠️  El modelo [${analysisResult.provider.toUpperCase()}] ${analysisResult.model} no devolvió JSON válido. Reintentando con el resto de la cadena...`);
+        const usedIndex = chain.findIndex(e => e.provider === analysisResult.provider && e.model === analysisResult.model);
+        const remainingChain = usedIndex >= 0 ? chain.slice(usedIndex + 1) : [];
+        if (remainingChain.length === 0) {
+          console.error('Failed to parse correction response. Raw output was:');
+          console.log(rawResponse.slice(0, 500));
+          throw new Error('No remaining models in chain could produce valid JSON.');
+        }
+        const retryResult = await callWithFallback(remainingChain, callMode, systemInstruction, userPrompt);
+        result = extractJSON(retryResult.text);
+        if (!result) {
+          console.error('Failed to parse correction response after retry. Raw output was:');
+          console.log(retryResult.text.slice(0, 500));
+          throw new Error('No model in the fallback chain produced valid JSON.');
+        }
+        console.log(`  ✅ JSON válido obtenido tras reintento con [${retryResult.provider.toUpperCase()}] ${retryResult.model}`);
       }
 
       if (!result.files || !Array.isArray(result.files)) {
