@@ -683,7 +683,7 @@ async function postPRComment(report, token) {
     const apiUrl = process.env.GITHUB_API_URL || 'https://api.github.com';
     const url = `${apiUrl}/repos/${repo}/issues/${prNumber}/comments`;
 
-    const commentBody = `### 🤖 Zenon (AI Assistant) Code Review\n\n${report}`;
+    const commentBody = `### <img src="https://raw.githubusercontent.com/amglogicalis/my-github-actions/main/logo.png" height="22" align="absmiddle" /> Zenon (AI Assistant) Code Review\n\n${report}`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -985,7 +985,7 @@ Your job is to:
       if (!result.files || !Array.isArray(result.files)) {
         console.log('Zenon did not find any files that require corrections.');
         if (isCI && process.env.GITHUB_STEP_SUMMARY) {
-          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '### 🤖 Zenon Auto-Correction\n\nNo corrections were found necessary for this codebase.\n');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '### <img src="https://raw.githubusercontent.com/amglogicalis/my-github-actions/main/logo.png" height="22" align="absmiddle" /> Zenon Auto-Correction\n\nNo corrections were found necessary for this codebase.\n');
         }
         return;
       }
@@ -1016,7 +1016,7 @@ Your job is to:
 
       if (isCI) {
         // Write report to step summary
-        let summaryContent = `### 🤖 Zenon Auto-Correction Applied\n\nZenon has analyzed your code and applied corrections to the following files:\n\n`;
+        let summaryContent = `### <img src="https://raw.githubusercontent.com/amglogicalis/my-github-actions/main/logo.png" height="22" align="absmiddle" /> Zenon Auto-Correction Applied\n\nZenon has analyzed your code and applied corrections to the following files:\n\n`;
         for (const file of result.files) {
           summaryContent += `- **${file.path}**: ${file.explanation || 'Applied improvements'}\n`;
         }
@@ -1044,7 +1044,7 @@ Your job is to:
       if (isCI) {
         // Write report to GHA Job Summary
         if (process.env.GITHUB_STEP_SUMMARY) {
-          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### 🤖 Zenon (AI Assistant) Code Review\n\n${rawResponse}`);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### <img src="https://raw.githubusercontent.com/amglogicalis/my-github-actions/main/logo.png" height="22" align="absmiddle" /> Zenon (AI Assistant) Code Review\n\n${rawResponse}`);
         }
 
         // Post comment to PR if event is PR

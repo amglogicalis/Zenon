@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="Zenon Logo" width="180" />
+  <img src="logo.png" alt="Zenon Logo" width="280" />
 </p>
 
 <h1 align="center">Zenon AI Assistant</h1>
