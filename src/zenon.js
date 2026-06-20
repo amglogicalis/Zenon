@@ -1309,6 +1309,18 @@ async function callWithFallback(chain, mode, systemInstruction, prompt, enableGr
           }
           break; // Salir de los reintentos e ir al siguiente modelo
         } else if (statusCode === 429) {
+          const errorMsgLower = err.message.toLowerCase();
+          const isDailyLimit = errorMsgLower.includes('perday') || 
+                               errorMsgLower.includes('per_day') || 
+                               errorMsgLower.includes('per day') || 
+                               errorMsgLower.includes('daily') ||
+                               errorMsgLower.includes('free_tier_requests');
+
+          if (isDailyLimit) {
+            console.warn(`  ⚠️  Modelo "${modelLabel}" superó límite de cuota DIARIA (429). Evitando reintentos y cambiando al siguiente de inmediato...`);
+            break; // Abortar reintentos y saltar al siguiente modelo en el fallback chain
+          }
+
           if (retryCount < MAX_RETRIES) {
             retryCount++;
             // Espera con Backoff Exponencial
