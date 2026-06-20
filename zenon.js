@@ -433,6 +433,96 @@ function runGit(args) {
   }
 }
 
+// Helper to append git exclusions as pathspecs
+function addExclusions(args, exclude) {
+  if (!exclude) return;
+  const excludes = exclude.split(',').map(e => e.trim()).filter(Boolean);
+  for (const pattern of excludes) {
+    args.push(`:!${pattern}`);
+  }
+}
+
+// Helper to retrieve git diff based on range and exclusions using pathspecs
+function getGitDiff(range, exclude) {
+  try {
+    runGit(['status']);
+  } catch (err) {
+    throw new Error('Not a git repository or git command not available. Reviewer mode requires a git repository.');
+  }
+
+  // If explicit range is provided, use it
+  if (range) {
+    console.log(`🔍 Getting git diff for specified range: "${range}"`);
+    const args = ['diff', range, '--', '.'];
+    addExclusions(args, exclude);
+    try {
+      return runGit(args);
+    } catch (e) {
+      throw new Error(`Failed to get git diff for range "${range}": ${e.message}`);
+    }
+  }
+
+  const isCI = !!process.env.GITHUB_ACTIONS;
+
+  if (isCI) {
+    const eventName = process.env.GITHUB_EVENT_NAME;
+    console.log(`🔍 Running in CI. Event: "${eventName}"`);
+
+    if (eventName === 'pull_request' || eventName === 'pull_request_target') {
+      const baseRef = process.env.GITHUB_BASE_REF || 'main';
+      console.log(`🔍 Pull Request detected. Comparing against target branch: "origin/${baseRef}"`);
+      try {
+        // Fetch base branch first
+        try { runGit(['fetch', 'origin', baseRef]); } catch (e) {}
+        const prArgs = ['diff', `origin/${baseRef}...HEAD`, '--', '.'];
+        addExclusions(prArgs, exclude);
+        return runGit(prArgs);
+      } catch (e) {
+        console.warn(`  ⚠️ Failed to diff against origin/${baseRef}: ${e.message}. Falling back to comparing last commit.`);
+      }
+    }
+
+    // Push or other events: compare HEAD~1 with HEAD
+    console.log('🔍 Comparing current commit against its parent (HEAD~1)...');
+    try {
+      const pushArgs = ['diff', 'HEAD~1', 'HEAD', '--', '.'];
+      addExclusions(pushArgs, exclude);
+      return runGit(pushArgs);
+    } catch (e) {
+      try {
+        return runGit(['show', 'HEAD']);
+      } catch (err) {
+        throw new Error(`Failed to get diff for HEAD~1 in CI: ${err.message}`);
+      }
+    }
+  } else {
+    // Local terminal mode
+    console.log('🔍 Running locally. Detecting changes...');
+    // 1. Check working directory changes (staged and unstaged)
+    const localArgs = ['diff', 'HEAD', '--', '.'];
+    addExclusions(localArgs, exclude);
+    const workingDiff = runGit(localArgs);
+    if (workingDiff.trim()) {
+      console.log('  👉 Found unsaved changes in the working directory.');
+      return workingDiff;
+    }
+
+    // 2. If no unsaved changes, check last commit
+    console.log('  👉 No unsaved changes found. Reviewing the last commit (HEAD~1)...');
+    try {
+      const lastCommitArgs = ['diff', 'HEAD~1', 'HEAD', '--', '.'];
+      addExclusions(lastCommitArgs, exclude);
+      return runGit(lastCommitArgs);
+    } catch (e) {
+      try {
+        return runGit(['show', 'HEAD']);
+      } catch (err) {
+        throw new Error(`Failed to get local git diff: ${err.message}`);
+      }
+    }
+  }
+}
+
 // Helper to parse CLI arguments (e.g. node zenon.js --mode correct)
 function parseArgs() {
   const args = {};
@@ -446,8 +536,9 @@ function parseArgs() {
       args.objectiveFile = process.argv[++i];
     } else if ((arg === '--topic' || arg === '-t') && i + 1 < process.argv.length) {
       args.topic = process.argv[++i];
+    } else if ((arg === '--diff' || arg === '-d') && i + 1 < process.argv.length) {
+      args.diffRange = process.argv[++i];
     }
-    // Note: --model / -d intentionally removed. Zenon selects models automatically.
   }
   return args;
 }
@@ -1184,6 +1275,7 @@ async function main() {
   const exclude = cliArgs.exclude || process.env.INPUT_EXCLUDE || '';
   const objectiveFile = cliArgs.objectiveFile || process.env.INPUT_OBJECTIVE_FILE || 'zenon_objective.md';
   const topic = cliArgs.topic || process.env.INPUT_TOPIC || '';
+  const diffRange = cliArgs.diffRange || process.env.INPUT_DIFF_RANGE || '';
   const githubToken = process.env.INPUT_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
   const isCI = !!process.env.GITHUB_ACTIONS;
 
@@ -1205,6 +1297,8 @@ async function main() {
     }
   } else if (mode === 'trainer') {
     console.log(`Topic        : "${topic || '(none)'}"`);
+  } else if (mode === 'reviewer') {
+    console.log(`Diff Range   : "${diffRange || '(auto)'}"`);
   }
   console.log('=====================');
 
@@ -1217,8 +1311,8 @@ async function main() {
     process.exit(1);
   }
 
-  if (!['assist', 'correct', 'objective', 'trainer'].includes(mode)) {
-    console.error(`❌ Modo "${mode}" no reconocido. Modos disponibles: "assist", "correct", "objective", "trainer".`);
+  if (!['assist', 'correct', 'objective', 'trainer', 'reviewer'].includes(mode)) {
+    console.error(`❌ Modo "${mode}" no reconocido. Modos disponibles: "assist", "correct", "objective", "trainer", "reviewer".`);
     process.exit(1);
   }
 
@@ -1323,9 +1417,9 @@ async function main() {
     console.log(`Total codebase size: ${(totalSize / 1024).toFixed(2)} KB | Engine: ${engineLabel} mode`);
   }
 
-  // Construir el payload del repositorio completo
+  // Construir el payload del repositorio completo (omitido en trainer y reviewer inicialmente)
   let codebasePayload = '';
-  if (mode !== 'trainer') {
+  if (mode !== 'trainer' && mode !== 'reviewer') {
     for (const file of files) {
       try {
         if (fs.existsSync(file)) {
@@ -1366,7 +1460,7 @@ async function main() {
       if (cacheData.knowledge) {
         previousKnowledge = cacheData.knowledge;
       }
-      if (mode !== 'trainer' && cacheData.fingerprint === fingerprint && cacheData.knowledge) {
+      if (mode !== 'trainer' && (cacheData.fingerprint === fingerprint || mode === 'reviewer') && cacheData.knowledge) {
         cachedKnowledge = cacheData.knowledge;
         cacheLoaded = true;
         console.log('ℹ️  Cargada base de conocimiento contextual desde la caché (.zenon_cache.json)');
@@ -1379,6 +1473,21 @@ async function main() {
   if (mode !== 'trainer' && !cacheLoaded) {
     console.log('🧠 Base de conocimiento no encontrada o desactualizada. Iniciando autoentrenamiento...');
     ensureGitignore();
+
+    // Cargar codebasePayload bajo demanda si está vacío
+    if (!codebasePayload) {
+      console.log('Cargando archivos del repositorio para el entrenamiento...');
+      for (const file of files) {
+        try {
+          if (fs.existsSync(file)) {
+            const content = fs.readFileSync(file, 'utf8');
+            codebasePayload += `--- FILE: ${file}\n${content}\n--- END OF FILE ---\n\n`;
+          }
+        } catch (e) {
+          console.warn(`Warning: Could not read file ${file}: ${e.message}`);
+        }
+      }
+    }
 
     // El system instruction NO menciona "Google Search tool" porque:
     //  - Gemini recibe el tool real vía enableGrounding=true en el body de la API (no necesita que el prompt lo pida).
@@ -1523,6 +1632,82 @@ Return the structured, professional technical profile now.`;
       return;
     } catch (err) {
       console.error('❌ Error durante el entrenamiento:', err.message);
+      process.exit(1);
+    }
+  }
+
+  // =============================================================================
+  // PASO 9: Modo Reviewer — Ejecución de revisión del Git Diff
+  // =============================================================================
+  if (mode === 'reviewer') {
+    try {
+      console.log('🔍 Zenon Reviewer is extracting the git diff...');
+      const diffContent = getGitDiff(diffRange, exclude);
+
+      if (!diffContent || !diffContent.trim()) {
+        console.log('✅ No changes found to review.');
+        if (isCI && process.env.GITHUB_STEP_SUMMARY) {
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### <img src="https://raw.githubusercontent.com/amglogicalis/Zenon/main/logo_polis_zenon.png" height="24" align="absmiddle" /> Zenon Polis — Reviewer\n\nNo changes were found in the current diff range.\n`);
+        }
+        return;
+      }
+
+      console.log(`Found diff of ${diffContent.length} characters.`);
+
+      let reviewerSystemInstruction = `You are "Zenon", a principal software engineer and expert code reviewer.
+Your task is to review the code changes (git diff) provided by the user.
+Analyze the changes to:
+1. Identify logic bugs, syntax errors, or critical security vulnerabilities introduced in the modified code.
+2. Flag bad practices, performance bottlenecks, or violations of clean coding guidelines.
+3. Suggest clear, actionable improvements and optimized code replacements.
+
+CRITICAL RULES:
+- Only report issues directly related to the changed code (lines starting with '+' or '-'). Do not comment on unchanged code.
+- Be concise and technical. Avoid generic advice, introductory boilerplate, or conversational preamble.
+- Format your review report in clean Markdown using headings, tables, code blocks, and alerts (> [!WARNING] / > [!IMPORTANT]).
+- Start directly with the first section heading.`;
+
+      if (cachedKnowledge) {
+        reviewerSystemInstruction += `\n\n=== CONTEXTO DEL REPOSITORIO (CONOCIMIENTO CACHÉ) ===\n${cachedKnowledge}\n======================================================`;
+      }
+
+      const reviewerUserPrompt = `=== GIT DIFF TO REVIEW ===
+${diffContent}
+
+Please perform a deep technical code review of this diff.`;
+
+      console.log('🤖 Zenon is reviewing your changes...');
+      const reviewResult = await callWithFallback(chain, 'assist', reviewerSystemInstruction, reviewerUserPrompt);
+      const reportText = reviewResult.text;
+
+      console.log(`\n✅ Review completed successfully using [${reviewResult.provider.toUpperCase()}] ${reviewResult.model}`);
+
+      // Report
+      if (isCI) {
+        let summaryContent = `### <img src="https://raw.githubusercontent.com/amglogicalis/Zenon/main/logo_polis_zenon.png" height="24" align="absmiddle" /> Zenon Polis — Reviewer\n\n`;
+        summaryContent += `#### <img src="https://raw.githubusercontent.com/amglogicalis/Zenon/main/logo_zenon_reviewer.png" height="20" align="absmiddle" /> Informe de Revisión\n\n`;
+        summaryContent += `${reportText}\n`;
+
+        if (process.env.GITHUB_STEP_SUMMARY) {
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summaryContent);
+        }
+
+        // Post comment to PR if event is PR
+        const eventName = process.env.GITHUB_EVENT_NAME;
+        if (eventName === 'pull_request' || eventName === 'pull_request_target') {
+          await postPRComment(reportText, githubToken);
+        }
+      } else {
+        // Local mode report
+        let localReport = `# <img src="logo_polis_zenon.png" height="32" /> Zenon Polis — Reviewer Report\n\n`;
+        localReport += `## <img src="logo_zenon_reviewer.png" height="26" /> Informe de Revisión\n\n`;
+        localReport += `${reportText}\n`;
+        fs.writeFileSync('zenon_report.md', localReport, 'utf8');
+        console.log('Detalles de la revisión guardados en zenon_report.md');
+      }
+      return;
+    } catch (err) {
+      console.error('❌ Error durante la revisión:', err.message);
       process.exit(1);
     }
   }

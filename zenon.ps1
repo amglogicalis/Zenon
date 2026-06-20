@@ -7,6 +7,8 @@
 #   .\zenon.ps1 --mode objective --objective path\to\my_goal.md
 #   .\zenon.ps1 --mode assist --exclude "test/,fixtures/"
 #   .\zenon.ps1 --mode trainer --topic "Ruby on Rails 7.0"
+#   .\zenon.ps1 --mode reviewer                      # review local unstaged/staged git diff
+#   .\zenon.ps1 --mode reviewer --diff "HEAD~1"       # review last commit
 # =============================================================================
 param(
     [Parameter(ValueFromRemainingArguments = $true)]

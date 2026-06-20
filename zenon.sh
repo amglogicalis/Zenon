@@ -8,6 +8,8 @@
 #   ./zenon.sh --mode objective --objective path/to/my_goal.md
 #   ./zenon.sh --mode assist --exclude "test/,fixtures/"
 #   ./zenon.sh --mode trainer --topic "Ruby on Rails 7.0"
+#   ./zenon.sh --mode reviewer           # review local unstaged/staged git diff
+#   ./zenon.sh --mode reviewer --diff "HEAD~1" # review last commit
 # =============================================================================
 set -euo pipefail
 
