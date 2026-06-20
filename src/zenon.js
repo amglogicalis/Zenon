@@ -2957,7 +2957,7 @@ Please answer the user query based on the codebase knowledge base and the live c
       } else {
         // Auto-detect root md files and docs/ folder md files
         const internalDocs = new Set([
-          'zenon_plan.md', 'zenon_objective.md', 'zenon_report.md',
+          'zenon_plan.md', 'zenon_objective.md', 'zenon_report.md', 'zenon_devops.md',
           'changelog.md', 'contributing.md', 'license.md',
           'code_of_conduct.md', 'security.md', 'pull_request_template.md',
           'issue_template.md'
@@ -3005,13 +3005,122 @@ Please answer the user query based on the codebase knowledge base and the live c
         return;
       }
 
-      // 4. Call LLM for each document
+      // 4. Call LLM for each document — with integrity guards and smart patch strategy
       const modifiedDocs = [];
 
-      for (const doc of docPayloads) {
-        console.log(`\n🔍 Auditing documentation file: ${doc.path}...`);
+      // --- Integrity validators ---
 
-        const updaterSystemInstruction = `You are "Zenon Updater", a principal technical documentation architect and software writer.
+      // Returns true if the document content looks complete (no unclosed fences/blocks)
+      function validateDocumentIntegrity(content) {
+        const lines = content.split('\n');
+        let inCode = false;
+        let mermaidOpen = 0;
+        let codeOpen = 0;
+        let tableLines = 0;
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('```')) {
+            if (!inCode) {
+              inCode = true;
+              codeOpen++;
+              if (trimmed.toLowerCase().includes('mermaid')) mermaidOpen++;
+            } else {
+              inCode = false;
+              codeOpen--;
+              if (mermaidOpen > 0) mermaidOpen--;
+            }
+          }
+          if (trimmed.startsWith('|') && trimmed.endsWith('|')) tableLines++;
+        }
+
+        const issues = [];
+        if (inCode) issues.push('Unclosed code fence (```) detected');
+        if (mermaidOpen > 0) issues.push('Unclosed mermaid diagram detected');
+
+        return { valid: issues.length === 0, issues };
+      }
+
+      // Returns true if newContent is not suspiciously shorter than originalContent
+      function validateContentLength(originalContent, newContent) {
+        const originalLen = originalContent.length;
+        const newLen = newContent.length;
+        // Allow up to 30% shrinkage — more than that is likely truncation
+        const minAllowedLen = Math.floor(originalLen * 0.70);
+        if (newLen < minAllowedLen) {
+          return {
+            valid: false,
+            message: `New content (${newLen} chars) is ${Math.round((1 - newLen / originalLen) * 100)}% shorter than original (${originalLen} chars). Likely truncated — rejecting to protect document.`
+          };
+        }
+        return { valid: true };
+      }
+
+      // Truncate diff smartly to avoid context overflow
+      function truncateDiff(diff, maxChars) {
+        if (diff.length <= maxChars) return diff;
+        const half = Math.floor(maxChars / 2);
+        return diff.slice(0, half) + '\n\n... [DIFF TRUNCATED FOR CONTEXT SAFETY] ...\n\n' + diff.slice(-half);
+      }
+
+      // Large doc threshold: above this we use patch strategy instead of full-file replacement
+      const LARGE_DOC_THRESHOLD = 8000; // 8KB
+
+      for (const doc of docPayloads) {
+        console.log(`\n🔍 Auditing documentation file: ${doc.path} (${doc.content.length} chars)...`);
+
+        const isLargeDoc = doc.content.length > LARGE_DOC_THRESHOLD;
+        const maxDiffChars = Math.floor((chain[0].maxInputChars - doc.content.length - 2000) * 0.7);
+        const safeDiff = truncateDiff(diffContent, Math.max(maxDiffChars, 3000));
+
+        let updaterSystemInstruction;
+        let updaterUserPrompt;
+
+        if (isLargeDoc) {
+          // ---------------------------------------------------------------
+          // PATCH STRATEGY for large docs: model returns only changed sections
+          // This avoids truncation of the full document in the JSON response
+          // ---------------------------------------------------------------
+          console.log(`  📐 Large document detected (${doc.content.length} chars) — using patch strategy`);
+
+          updaterSystemInstruction = `You are "Zenon Updater", a principal technical documentation architect.
+Your task is to identify ONLY the specific sections of a documentation file that need to be updated based on recent code changes.
+
+CRITICAL RULES:
+- Return a list of PATCHES — only the sections that changed, not the full document.
+- Each patch has: "search" (exact text to find in the document), "replace" (new text to substitute), and "reason".
+- The "search" field must be an EXACT, UNIQUE substring from the current document — long enough to be unambiguous (at least 2-3 lines).
+- The "replace" field contains the replacement text for that specific section only.
+- If no updates are needed at all, return an empty patches array.
+- NEVER include the full document in your response.
+- Return ONLY raw JSON. No markdown fences, no explanation outside the JSON.`;
+
+          updaterUserPrompt = `=== RECENT CODE CHANGES (GIT DIFF) ===
+${safeDiff}
+
+=== CURRENT DOCUMENT: ${doc.path} ===
+${doc.content.slice(0, chain[0].maxInputChars - safeDiff.length - 3000)}
+
+=== OBJECTIVE ===
+Identify only the sections of this document that are outdated relative to the code changes above.
+Return ONLY the sections that need to change as search/replace patches. If no changes are needed, return empty patches array.
+
+Return ONLY raw JSON with this exact schema:
+{
+  "patches": [
+    {
+      "search": "<exact substring from the document to find — must be unique and at least 2 full lines>",
+      "replace": "<new text to substitute in place of the search text>",
+      "reason": "<brief explanation of what changed and why>"
+    }
+  ]
+}`;
+
+        } else {
+          // ---------------------------------------------------------------
+          // FULL-FILE STRATEGY for small docs (standard approach, now with guards)
+          // ---------------------------------------------------------------
+          updaterSystemInstruction = `You are "Zenon Updater", a principal technical documentation architect and software writer.
 Your task is to synchronize repository documentation with recent code changes.
 
 CRITICAL RULES:
@@ -3019,28 +3128,30 @@ CRITICAL RULES:
 - If the changes in the code have left any parts of the document outdated (e.g. modified CLI flags, changed routes, renamed functions, new setups), update only the affected sections.
 - Make ONLY precise, additive, or selective updates. Do NOT rewrite or rephrase unaffected sections. Keep the rest of the document 100% identical.
 - Follow the document's original style, formatting, tone, emojis, header logos, and layout exactly.
+- NEVER truncate the document. The "content" field MUST contain the COMPLETE file — every single line, from start to finish.
 - Return ONLY the raw JSON output in the specified schema. No conversational filler, no markdown fences outside the JSON.`;
 
-        const updaterUserPrompt = `=== RECENT CODE CHANGES (GIT DIFF) ===
-${diffContent}
+          updaterUserPrompt = `=== RECENT CODE CHANGES (GIT DIFF) ===
+${safeDiff}
 
 === CURRENT DOCUMENT PATH: ${doc.path} ===
 ${doc.content}
 
 === OBJECTIVE ===
-Analyze if the code changes require any updates to this document. If updates are needed, generate the updated complete content. If no updates are needed, return an empty files array.
+Analyze if the code changes require any updates to this document. If updates are needed, generate the COMPLETE updated content (all ${doc.content.length} characters approximately — do not shorten). If no updates are needed, return an empty files array.
 
 Return ONLY raw JSON with this exact schema (no markdown formatting, no code fences):
 {
   "files": [
-    { "path": "${doc.path}", "content": "<complete updated file content>", "reason": "<brief explanation of changes made>" }
+    { "path": "${doc.path}", "content": "<complete updated file content — MUST include every line>", "reason": "<brief explanation of changes made>" }
   ]
 }`;
+        }
 
-        console.log(`🤖 Zenon is analyzing "${doc.path}"...`);
+        console.log(`🤖 Zenon is analyzing "${doc.path}" [${isLargeDoc ? 'patch' : 'full-file'} strategy]...`);
         const updaterResult = await callWithFallback(chain, 'correct', updaterSystemInstruction, updaterUserPrompt);
         const rawResponse = updaterResult.text;
-        
+
         let result = extractJSON(rawResponse);
         if (!result) {
           console.warn(`  ⚠️ Could not parse JSON response for ${doc.path}. Retrying with remaining chain...`);
@@ -3052,19 +3163,102 @@ Return ONLY raw JSON with this exact schema (no markdown formatting, no code fen
           }
         }
 
-        if (result && result.files && result.files.length > 0) {
+        if (!result) {
+          console.warn(`  ⚠️ Could not obtain valid JSON for ${doc.path} after retry. Skipping to protect document.`);
+          continue;
+        }
+
+        // --- Apply patches (large doc strategy) ---
+        if (isLargeDoc) {
+          const patches = result.patches || [];
+          if (!Array.isArray(patches) || patches.length === 0) {
+            console.log(`✅ No updates needed for: ${doc.path}`);
+            continue;
+          }
+
+          let updatedContent = doc.content;
+          let patchApplied = 0;
+          let patchFailed = 0;
+
+          for (const patch of patches) {
+            if (!patch.search || !patch.replace) {
+              console.warn(`  ⚠️ Patch missing search/replace fields — skipping`);
+              patchFailed++;
+              continue;
+            }
+            if (!updatedContent.includes(patch.search)) {
+              console.warn(`  ⚠️ Patch search text not found in document — skipping: "${patch.search.slice(0, 80)}..."`);
+              patchFailed++;
+              continue;
+            }
+            updatedContent = updatedContent.replace(patch.search, patch.replace);
+            patchApplied++;
+            console.log(`  🔧 Patch applied: ${patch.reason || '(no reason given)'}`);
+          }
+
+          if (patchApplied === 0) {
+            console.log(`✅ No patches could be applied for: ${doc.path} (${patchFailed} failed)`);
+            continue;
+          }
+
+          // Integrity checks on patched content
+          const lenCheck = validateContentLength(doc.content, updatedContent);
+          if (!lenCheck.valid) {
+            console.error(`  ❌ INTEGRITY CHECK FAILED for ${doc.path}: ${lenCheck.message}`);
+            console.error(`  🛡️ Document was NOT written. Original file is preserved.`);
+            continue;
+          }
+
+          const integrityCheck = validateDocumentIntegrity(updatedContent);
+          if (!integrityCheck.valid) {
+            console.error(`  ❌ BLOCK INTEGRITY CHECK FAILED for ${doc.path}: ${integrityCheck.issues.join('; ')}`);
+            console.error(`  🛡️ Document was NOT written. Original file is preserved.`);
+            continue;
+          }
+
+          fs.writeFileSync(doc.path, updatedContent, 'utf8');
+          modifiedDocs.push({ path: doc.path, reason: patches.map(p => p.reason).filter(Boolean).join('; ') });
+          console.log(`✅ Patches applied to: ${doc.path} (${patchApplied}/${patches.length} patches)`);
+
+        } else {
+          // --- Apply full-file replacement (small doc strategy) ---
+          if (!result.files || result.files.length === 0) {
+            console.log(`✅ No updates needed for: ${doc.path}`);
+            continue;
+          }
+
           const fileUpdate = result.files[0];
           const newContent = fileUpdate.content;
           const reason = fileUpdate.reason || 'Auto-synchronized with code changes.';
+
+          if (!newContent || !newContent.trim()) {
+            console.warn(`  ⚠️ AI returned empty content for ${doc.path} — skipping to protect document.`);
+            continue;
+          }
+
+          // Integrity guard: length check
+          const lenCheck = validateContentLength(doc.content, newContent);
+          if (!lenCheck.valid) {
+            console.error(`  ❌ INTEGRITY CHECK FAILED for ${doc.path}: ${lenCheck.message}`);
+            console.error(`  🛡️ Document was NOT written. Original file is preserved.`);
+            continue;
+          }
+
+          // Integrity guard: block completeness
+          const integrityCheck = validateDocumentIntegrity(newContent);
+          if (!integrityCheck.valid) {
+            console.error(`  ❌ BLOCK INTEGRITY CHECK FAILED for ${doc.path}: ${integrityCheck.issues.join('; ')}`);
+            console.error(`  🛡️ Document was NOT written. Original file is preserved.`);
+            continue;
+          }
 
           fs.writeFileSync(doc.path, newContent, 'utf8');
           modifiedDocs.push({ path: doc.path, reason });
           console.log(`✅ File updated: ${doc.path}`);
           console.log(`   Reason: ${reason}`);
-        } else {
-          console.log(`✅ No updates needed for: ${doc.path}`);
         }
       }
+
 
       // 5. Commit and push in GHA CI, or write report
       if (modifiedDocs.length === 0) {

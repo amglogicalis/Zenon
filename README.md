@@ -60,8 +60,9 @@ graph TD
             UP["📝 Updater\n--mode updater"]
             RE["🔍 Reviewer\n--mode reviewer"]
             TR["🎓 Trainer\n--mode trainer"]
-            CO["⚙️ DevOpser\n--mode correct / --mode objective"]
+            CO["⚙️ Correct/Objective\n--mode correct/objective"]
             TE["🧪 Tester\n--mode tester"]
+            DO["⚡ DevOpser\n--mode devops"]
         end
 
         ENTRY --> AGENTS
@@ -85,6 +86,7 @@ graph TD
     style TR fill:#16a34a,stroke:#15803d,stroke-width:1px,color:#fff
     style CO fill:#9333ea,stroke:#7e22ce,stroke-width:1px,color:#fff
     style TE fill:#db2777,stroke:#be185d,stroke-width:1px,color:#fff
+    style DO fill:#ea580c,stroke:#c2410c,stroke-width:2px,color:#fff
     style CLI fill:#374151,stroke:#6b7280,stroke-width:1px,color:#f9fafb
     style GHA fill:#374151,stroke:#6b7280,stroke-width:1px,color:#f9fafb
 ```
