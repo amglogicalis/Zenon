@@ -297,7 +297,7 @@ function buildChainFromSelection(selection, keys) {
  * del repo y elija la cadena optima consultando zenon_models.json.
  * Devuelve null si el selector falla (el caller usa buildDefaultChain).
  */
-async function selectModelsWithAI(keys, stackInfo, mode, totalSize) {
+async function selectModelsWithAI(keys, stackInfo, mode, totalSize, userQuery = '') {
   // Sub-cadena del selector con los modelos fijos disponibles
   const selectorChain = SELECTOR_MODELS
     .filter(s => keys[s.provider])
@@ -343,6 +343,7 @@ async function selectModelsWithAI(keys, stackInfo, mode, totalSize) {
   const modeDesc = mode === 'correct'   ? 'correccion automatica de bugs, salida JSON estructurada'
                  : mode === 'objective' ? 'implementacion de objetivo de desarrollo, salida JSON estructurada'
                  : mode === 'trainer'   ? 'entrenamiento de conocimiento, requiere busqueda en Google (Google Search Grounding). Prioriza obligatoriamente modelos del proveedor "gemini" en los primeros lugares de la cadena para que puedan realizar busquedas en la web.'
+                 : mode === 'helper'    ? 'asistencia interactiva sobre la base de codigo y resolucion de consultas'
                  : 'revision de codigo, produce informe Markdown';
 
   const selectorSystemInstruction =
@@ -354,16 +355,20 @@ async function selectModelsWithAI(keys, stackInfo, mode, totalSize) {
     'Selecciona los 4-5 mejores modelos del catalogo disponible para esta tarea:\n\n' +
     'CONTEXTO DE TAREA:\n' +
     '- Modo: "' + mode + '" -- ' + modeDesc + '\n' +
+    '- Consulta o tarea específica del usuario: "' + userQuery + '"\n' +
     '- Stack dominante: ' + stackInfo.dominant.toUpperCase() + '\n' +
     '- Tamano del codebase: ' + sizeMB + ' MB (' + sizeLabel + ')\n\n' +
     'MODELOS DISPONIBLES (solo estos tienen API keys configuradas):\n' +
     JSON.stringify(availableModels, null, 2) + '\n\n' +
     'REGLAS DE SELECCION:\n' +
-    '1. Para modo "correct" u "objective": prioriza modelos con especializacion "code" o "reasoning". Para modo "trainer", prioriza obligatoriamente modelos de "gemini" que soportan busqueda en Google.\n' +
-    '2. Para codebases GRANDES o MUY GRANDES (>100KB): prioriza providers con maxInputChars mas alto\n' +
-    '3. El primer modelo de la cadena debe ser el mas capaz disponible\n' +
-    '4. Incluye modelos de al menos 2 providers diferentes para resilencia\n' +
-    '5. No repitas el mismo par provider+api_model_id\n\n' +
+    '1. Clasificación de Complejidad: Analiza la consulta o tarea específica del usuario.\n' +
+    '   - Si la consulta es descriptiva, simple o de consulta rápida (ej. preguntas generales de arquitectura en modo "helper" como "¿qué lenguajes se usan?" o "¿qué hace este archivo?"), prioriza modelos rápidos y de menor coste (como gemini-flash-lite, gpt-4o-mini o llama-3.1-8b) al principio de la cadena para evitar consumir recursos innecesarios.\n' +
+    '   - Si la tarea implica desarrollo complejo, lógica profunda o escritura/modificación de código (como en modo "correct" u "objective", o consultas complejas de implementación), prioriza modelos insignia de alta capacidad de razonamiento/programación (como gpt-4o, deepseek-v3-2 o gemini-2.5-flash) al principio de la cadena.\n' +
+    '2. Para modo "trainer", prioriza obligatoriamente modelos de "gemini" que soportan búsqueda en Google en los primeros lugares.\n' +
+    '3. Para codebases GRANDES o MUY GRANDES (>100KB): prioriza providers con maxInputChars mas alto.\n' +
+    '4. El primer modelo de la cadena debe ser el mas capaz y adecuado disponible para el tipo y complejidad de consulta.\n' +
+    '5. Incluye modelos de al menos 2 providers diferentes para resilencia.\n' +
+    '6. No repitas el mismo par provider+api_model_id.\n\n' +
     'Devuelve SOLO este JSON (sin markdown, sin explicacion):\n' +
     '{\n' +
     '  "chain": [\n' +
@@ -1637,8 +1642,24 @@ async function main() {
     }
   }
 
+  // Resolver la consulta o tarea específica para enriquecer el selector de IA
+  let userQuery = 'Auditoría general del repositorio';
+  if (mode === 'correct') {
+    userQuery = 'Corrección autónoma de bugs y optimizaciones';
+  } else if (mode === 'objective') {
+    userQuery = objectiveContent;
+  } else if (mode === 'trainer') {
+    userQuery = topicContent;
+  } else if (mode === 'reviewer') {
+    userQuery = diffRange ? `Revisión de cambios en rango: ${diffRange}` : 'Revisión de cambios del diff actual';
+  } else if (mode === 'helper') {
+    userQuery = helperQuery;
+  } else if (mode === 'analyzer') {
+    userQuery = 'Análisis de consumo de tokens y cuotas de uso';
+  }
+
   // Intentar la selección inteligente mediante IA primero
-  const aiSelection = await selectModelsWithAI(keys, stackInfo, mode, totalSize);
+  const aiSelection = await selectModelsWithAI(keys, stackInfo, mode, totalSize, userQuery);
   let chain = null;
   if (aiSelection) {
     chain = buildChainFromSelection(aiSelection, keys);
