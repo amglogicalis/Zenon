@@ -201,6 +201,10 @@ Los siguientes agentes y herramientas especializadas están implementados dentro
 </p>
 <br />
 
+> [!TIP]
+> * **Autodetección (`auto-detect`)**: Requiere que el repositorio contenga los archivos de configuración estándar para poder inferir el runner (ej: `package.json` para Node.js, `pyproject.toml`, `requirements.txt` o archivos `.py` para Python, o `go.mod` para Go).
+> * **Comando Personalizado**: Si tu proyecto no dispone de estos archivos de configuración (por ejemplo, en scripts sueltos o entornos a medida), solo necesitas indicar explícitamente el comando de ejecución mediante `--test-cmd "comando"` (CLI) o el input `test-cmd` (GHA) y Zenon Tester funcionará sin necesidad de dependencias o paquetes declarados.
+
 * **Modo Reporte**: Genera un análisis profundo de causas raíz, relacionándolo con el código exacto implicado en el fallo, y aporta recomendaciones de parches correctores.
 * **Modo Auto-Fix**: Corrige físicamente el código, re-ejecuta los tests para certificar que el bug se ha resuelto y, si todo pasa, realiza el commit y push automático en entornos de integración continua (CI).
 * **Comando CLI**: `--mode tester` (opcionalmente acepta `--test-cmd "comando"`, `--auto-fix` y `--topic "fichero_o_foco"`).
