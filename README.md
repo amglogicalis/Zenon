@@ -147,7 +147,7 @@ Los siguientes agentes y herramientas especializadas están implementados dentro
 </p>
 <br />
 
-* **Búsqueda en Vivo (Grounding)**: Para evitar que la caché se desactualice si el usuario pregunta por archivos creados recientemente, realiza una búsqueda contextual en vivo buscando palabras clave dentro de los archivos del repositorio y añade los fragmentos coincidentes como contexto fresco en la consulta a la IA.
+* **Búsqueda en Vivo (Grounding)**: Para evitar que la caché se desactualice si el usuario pregunta por archivos creados recientemente, zenon realiza una búsqueda contextual en vivo buscando palabras clave dentro de los archivos del repositorio y añade los fragmentos coincidentes como contexto fresco en la consulta a la IA.
 * **Comando CLI**: `--mode helper --topic "Tu pregunta aquí"`
 * **Acción GHA**: [.github/actions/helper/action.yml](./.github/actions/helper/action.yml).
 
