@@ -455,5 +455,60 @@ if [ "$has_devops" = true ]; then
 fi
 
 echo ""
-echo -e "${GREEN}¡Sube estos archivos a tu rama de Git y estarás listo para ejecutar Zenon!${NC}"
+echo -e "${GREEN}¡Archivos de configuración creados con éxito!${NC}"
+echo -e "${PURPLE}=========================================================${NC}"
+
+# 7. Preguntar si se desean subir los cambios a GitHub
+echo ""
+read -p "Quieres subir los cambios a github? [s/N]: " git_choice
+if [ -z "$git_choice" ]; then
+    git_choice="n"
+fi
+git_choice=$(echo "$git_choice" | tr -d '\r' | tr '[:upper:]' '[:lower:]' | xargs)
+
+if [ "$git_choice" = "s" ] || [ "$git_choice" = "y" ] || [ "$git_choice" = "si" ] || [ "$git_choice" = "yes" ]; then
+    echo -e "${YELLOW}Haciendo git add, commit y push...${NC}"
+    git add .github/workflows/*
+    if [ -f "zenon_devops.md" ]; then git add zenon_devops.md; fi
+    if [ -f "zenon_objective.md" ]; then git add zenon_objective.md; fi
+    if git commit -m "chore: setup Zenon Polis workflows and configurations"; then
+        if git push; then
+            echo -e "${GREEN}✅ Cambios subidos a GitHub con éxito.${NC}"
+        else
+            echo -e "${RED}❌ Error al ejecutar 'git push'. Asegúrate de tener permisos para subir a esta rama.${NC}"
+        fi
+    else
+        echo -e "${RED}❌ Error al crear el commit de Git.${NC}"
+    fi
+fi
+
+# 8. Preguntar si se desean configurar los secrets desde aquí
+echo ""
+read -p "Quieres configurar desde aqui los secrets? [s/N]: " secret_choice
+if [ -z "$secret_choice" ]; then
+    secret_choice="n"
+fi
+secret_choice=$(echo "$secret_choice" | tr -d '\r' | tr '[:upper:]' '[:lower:]' | xargs)
+
+if [ "$secret_choice" = "s" ] || [ "$secret_choice" = "y" ] || [ "$secret_choice" = "si" ] || [ "$secret_choice" = "yes" ]; then
+    read -p "Pega la API Key de Gemini (ZENON_API_KEY): " gemini_key
+    gemini_key=$(echo "$gemini_key" | tr -d '\r' | xargs)
+    if [ -n "$gemini_key" ]; then
+        echo -e "${YELLOW}Configurando el secreto ZENON_API_KEY en GitHub...${NC}"
+        if command -v gh &> /dev/null; then
+            if echo "$gemini_key" | gh secret set ZENON_API_KEY; then
+                echo -e "${GREEN}✅ Secreto ZENON_API_KEY subido correctamente.${NC}"
+            else
+                echo -e "${RED}❌ Error al ejecutar 'gh secret set'. Asegúrate de haber iniciado sesión con 'gh auth login'.${NC}"
+            fi
+        else
+            echo -e "${RED}❌ El comando 'gh' (GitHub CLI) no está instalado en el sistema.${NC}"
+            echo -e "${YELLOW}Instálalo y ejecuta 'gh auth login' antes de configurar secretos desde consola.${NC}"
+        fi
+    else
+        echo -e "${YELLOW}No se ha introducido ninguna clave.${NC}"
+    fi
+fi
+
+echo ""
 echo -e "${PURPLE}=========================================================${NC}"

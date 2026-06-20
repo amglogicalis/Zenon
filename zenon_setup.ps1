@@ -475,5 +475,71 @@ if ($SelectedOptions -contains 2) {
 }
 
 Write-Host ""
-Write-Host "¡Sube estos archivos a tu rama de Git y estarás listo para ejecutar Zenon!" -ForegroundColor Green
+Write-Host "¡Archivos de configuración creados con éxito!" -ForegroundColor Green
 Write-Host "=========================================================" -ForegroundColor Magenta
+
+# 7. Preguntar si se desean subir los cambios a GitHub
+Write-Host ""
+$GitChoiceInput = $null
+if ($PipelineInputs.Count -gt 2 -and $PipelineInputs[2] -ne $null -and $PipelineInputs[2].ToString().Trim() -ne "") {
+    $GitChoiceInput = $PipelineInputs[2].ToString()
+}
+if (-not $GitChoiceInput) {
+    $GitChoiceInput = Read-Host "Quieres subir los cambios a github? [s/N]"
+}
+if (-not $GitChoiceInput) { $GitChoiceInput = "n" }
+
+if ($GitChoiceInput.ToLower().Trim() -eq "s" -or $GitChoiceInput.ToLower().Trim() -eq "si" -or $GitChoiceInput.ToLower().Trim() -eq "y" -or $GitChoiceInput.ToLower().Trim() -eq "yes") {
+    Write-Host "Haciendo git add, commit y push..." -ForegroundColor Yellow
+    try {
+        git add .github/workflows/*
+        if (Test-Path "zenon_devops.md") { git add zenon_devops.md }
+        if (Test-Path "zenon_objective.md") { git add zenon_objective.md }
+        git commit -m "chore: setup Zenon Polis workflows and configurations"
+        git push
+        Write-Host "✅ Cambios subidos a GitHub con éxito." -ForegroundColor Green
+    } catch {
+        Write-Host "❌ Error al subir los cambios a Git. Asegúrate de tener Git configurado y permisos para subir a esta rama." -ForegroundColor Red
+    }
+}
+
+# 8. Preguntar si se desean configurar los secrets desde aquí
+Write-Host ""
+$SecretChoiceInput = $null
+if ($PipelineInputs.Count -gt 3 -and $PipelineInputs[3] -ne $null -and $PipelineInputs[3].ToString().Trim() -ne "") {
+    $SecretChoiceInput = $PipelineInputs[3].ToString()
+}
+if (-not $SecretChoiceInput) {
+    $SecretChoiceInput = Read-Host "Quieres configurar desde aqui los secrets? [s/N]"
+}
+if (-not $SecretChoiceInput) { $SecretChoiceInput = "n" }
+
+if ($SecretChoiceInput.ToLower().Trim() -eq "s" -or $SecretChoiceInput.ToLower().Trim() -eq "si" -or $SecretChoiceInput.ToLower().Trim() -eq "y" -or $SecretChoiceInput.ToLower().Trim() -eq "yes") {
+    $GeminiKeyInput = $null
+    if ($PipelineInputs.Count -gt 4 -and $PipelineInputs[4] -ne $null -and $PipelineInputs[4].ToString().Trim() -ne "") {
+        $GeminiKeyInput = $PipelineInputs[4].ToString()
+    }
+    if (-not $GeminiKeyInput) {
+        $GeminiKeyInput = Read-Host "Pega la API Key de Gemini (ZENON_API_KEY)"
+    }
+    if ($GeminiKeyInput -and $GeminiKeyInput.Trim() -ne "") {
+        Write-Host "Configurando el secreto ZENON_API_KEY en GitHub..." -ForegroundColor Yellow
+        if (Get-Command gh -ErrorAction SilentlyContinue) {
+            $GeminiKeyInput.Trim() | gh secret set ZENON_API_KEY
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "✅ Secreto ZENON_API_KEY subido correctamente." -ForegroundColor Green
+            } else {
+                Write-Host "❌ Error al ejecutar 'gh secret set'. Asegúrate de haber iniciado sesión con 'gh auth login'." -ForegroundColor Red
+            }
+        } else {
+            Write-Host "❌ El comando 'gh' (GitHub CLI) no está instalado en el sistema." -ForegroundColor Red
+            Write-Host "Instálalo y ejecuta 'gh auth login' antes de configurar secretos desde consola." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "No se ha introducido ninguna clave." -ForegroundColor Yellow
+    }
+}
+
+Write-Host ""
+Write-Host "=========================================================" -ForegroundColor Magenta
+
