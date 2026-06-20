@@ -58,6 +58,7 @@ const PROVIDERS = {
   gemini: {
     keyName: 'ZENON_API_KEY',
     alternateKeyName: 'GEMINI_API_KEY',
+    rpmLimit: 15, // 15 RPM (min 4s spacing)
     models: [
       { id: 'gemini-2.5-flash',        maxInputChars: 4000000 }, // 1M tokens (4M chars)
       { id: 'gemini-flash-lite-latest', maxInputChars: 4000000 }, // 1M tokens (4M chars)
@@ -67,6 +68,7 @@ const PROVIDERS = {
   },
   groq: {
     keyName: 'GROQ_API_KEY',
+    rpmLimit: 30, // 30 RPM (min 2s spacing)
     models: [
       { id: 'llama-3.3-70b-versatile',                   maxInputChars: 28000 }, // Groq RPM safety limit (~7K tokens)
       { id: 'meta-llama/llama-4-scout-17b-16e-instruct', maxInputChars: 240000 }, // Groq limits to 60K tokens (240K chars)
@@ -76,6 +78,7 @@ const PROVIDERS = {
   },
   cohere: {
     keyName: 'COHERE_API_KEY',
+    rpmLimit: 10, // 10 RPM (min 6s spacing)
     models: [
       { id: 'command-a-plus-05-2026', maxInputChars: 500000 }, // 128K tokens (500K chars)
       { id: 'command-r-plus-08-2024', maxInputChars: 500000 }, // 128K tokens (500K chars)
@@ -85,6 +88,7 @@ const PROVIDERS = {
   },
   openrouter: {
     keyName: 'OPENROUTER_API_KEY',
+    rpmLimit: 10, // 10 RPM (min 6s spacing)
     models: [
       { id: 'cohere/north-mini-code:free',            maxInputChars: 500000 }, // 256K tokens, conservative 500K chars for free tier
       { id: 'qwen/qwen3-coder:free',                  maxInputChars: 300000 }, // Free tier rate safety
@@ -98,6 +102,7 @@ const PROVIDERS = {
   // ===========================================================================
   samba: {
     keyName: 'SAMBA_API_KEY',
+    rpmLimit: 4, // 4 RPM (min 15s spacing to prevent rate limit blocks on SambaNova free tier)
     models: [
       { id: 'DeepSeek-V3.2',               maxInputChars: 240000 }, // 60K tokens (240K chars) to avoid TPM rate-limit
       { id: 'gpt-oss-120b',                maxInputChars: 240000 }, // 60K tokens (240K chars)
@@ -108,6 +113,7 @@ const PROVIDERS = {
   },
   cerebras: {
     keyName: 'CEREBRAS_API_KEY',
+    rpmLimit: 15, // 15 RPM
     // max_completion_tokens OBLIGATORIO en Cerebras para evitar rate-limit por token-bucketing
     models: [
       { id: 'gpt-oss-120b', maxInputChars: 500000, max_completion_tokens: 2048 }, // 128K tokens (500K chars)
@@ -116,6 +122,7 @@ const PROVIDERS = {
   },
   github_models: {
     keyName: 'GH_MODELS_TOKEN',
+    rpmLimit: 10, // 10 RPM (min 6s spacing to avoid 429 errors on free GH Models tokens)
     models: [
       { id: 'gpt-4o',                       maxInputChars:  28000 }, // strict 8k tokens free tier limit (28K chars)
       { id: 'Meta-Llama-3.1-405B-Instruct', maxInputChars:  28000 }, // Llama 405B (strict 8k tokens free tier limit)
@@ -124,6 +131,9 @@ const PROVIDERS = {
     ]
   }
 };
+
+// Almacena las marcas de tiempo de las últimas peticiones enviadas por proveedor para aplicar throttling
+const lastRequestTimes = {};
 
 // Backoff base en ms para errores 429 (se duplica en cada reintento de la cadena)
 const BACKOFF_BASE_MS = 2000;
@@ -997,6 +1007,22 @@ function extractTextFromContent(content) {
 async function callProviderModel(entry, mode, systemInstruction, prompt, enableGrounding = false) {
   const { provider, model, apiKey, maxInputChars, max_completion_tokens } = entry;
 
+  // Proactive request spacing (throttling) to avoid exceeding provider RPM limits
+  const providerData = PROVIDERS[provider];
+  if (providerData && providerData.rpmLimit) {
+    const minInterval = (60 / providerData.rpmLimit) * 1000;
+    const now = Date.now();
+    const lastTime = lastRequestTimes[provider] || 0;
+    const elapsed = now - lastTime;
+    if (elapsed < minInterval) {
+      const waitTime = minInterval - elapsed;
+      console.log(`    ⏳ Espaciando peticiones para ${provider.toUpperCase()}: esperando ${(waitTime / 1000).toFixed(1)}s para mantener límite de ${providerData.rpmLimit} RPM...`);
+      await sleep(waitTime);
+    }
+  }
+  // Actualizar la marca de tiempo de la última llamada
+  lastRequestTimes[provider] = Date.now();
+
   // Adapt system instruction verbosity to this model's context tier
   const adaptedInstruction = adaptSystemInstruction(systemInstruction, model);
   if (adaptedInstruction.length < systemInstruction.length) {
@@ -1221,30 +1247,43 @@ async function callWithFallback(chain, mode, systemInstruction, prompt, enableGr
     const isLastModel = i === chain.length - 1;
     const modelLabel = `[${entry.provider.toUpperCase()}] ${entry.model}`;
 
-    try {
-      if (i > 0) {
-        console.log(`  ↳ Intentando fallback [${i}/${chain.length - 1}]: ${modelLabel}`);
-      } else {
-        console.log(`  Usando modelo principal: ${modelLabel}`);
-      }
+    let retryCount = 0;
+    const MAX_RETRIES = 3;
+    let success = false;
 
-      const result = await callProviderModel(entry, mode, systemInstruction, prompt, enableGrounding);
+    while (retryCount <= MAX_RETRIES && !success) {
+      try {
+        if (i > 0) {
+          if (retryCount > 0) {
+            console.log(`  ↳ Reintentando fallback [${i}/${chain.length - 1}] (intento ${retryCount}/${MAX_RETRIES}): ${modelLabel}`);
+          } else {
+            console.log(`  ↳ Intentando fallback [${i}/${chain.length - 1}]: ${modelLabel}`);
+          }
+        } else {
+          if (retryCount > 0) {
+            console.log(`  Reintentando modelo principal (intento ${retryCount}/${MAX_RETRIES}): ${modelLabel}`);
+          } else {
+            console.log(`  Usando modelo principal: ${modelLabel}`);
+          }
+        }
 
-      // Detect infinite-loop responses before accepting the result
-      if (isLoopingResponse(result)) {
-        console.warn(`  ⚠️  Modelo "${modelLabel}" devolvió una respuesta en bucle infinito. Descartando y cambiando al siguiente...`);
-        lastError = new Error('Looping response detected');
-        continue;
-      }
+        const result = await callProviderModel(entry, mode, systemInstruction, prompt, enableGrounding);
 
-      if (i > 0) {
-        console.log(`  ✅ Fallback exitoso con modelo: ${modelLabel}`);
-      }
-      return {
-        text: result,
-        provider: entry.provider,
-        model: entry.model
-      };
+        // Detect infinite-loop responses before accepting the result
+        if (isLoopingResponse(result)) {
+          console.warn(`  ⚠️  Modelo "${modelLabel}" devolvió una respuesta en bucle infinito. Descartando y cambiando al siguiente...`);
+          lastError = new Error('Looping response detected');
+          break; // Salir de los reintentos e ir al siguiente modelo
+        }
+
+        if (i > 0) {
+          console.log(`  ✅ Fallback exitoso con modelo: ${modelLabel}`);
+        }
+        return {
+          text: result,
+          provider: entry.provider,
+          model: entry.model
+        };
 
       } catch (err) {
         lastError = err;
@@ -1260,11 +1299,6 @@ async function callWithFallback(chain, mode, systemInstruction, prompt, enableGr
                                   err.message.toLowerCase().includes('too large') || 
                                   err.message.toLowerCase().includes('context_length_exceeded');
 
-        if (isLastModel) {
-          console.error(`  ❌ Todos los modelos del catálogo de proveedores fallaron.`);
-          break;
-        }
-
         if (isPayloadTooLarge) {
           console.warn(`  ⚠️  Modelo "${modelLabel}" falló por límite de tamaño/tokens (413 o context limit). Saltando todos los modelos de ${entry.provider.toUpperCase()} en esta ejecución...`);
           // Remover todos los modelos futuros de este mismo proveedor de la cadena de fallback
@@ -1273,20 +1307,44 @@ async function callWithFallback(chain, mode, systemInstruction, prompt, enableGr
               chain.splice(j, 1);
             }
           }
+          break; // Salir de los reintentos e ir al siguiente modelo
         } else if (statusCode === 429) {
-          // Rate-limited: wait a short constant time to clear RPM slot, then try next fallback
-          // Since the next model is on a different provider/quota, we do not scale wait times globally
-          const delayMs = BACKOFF_BASE_MS; // Constant 2s wait
-          console.warn(`  ⚠️  Modelo "${modelLabel}" superó límite de cuota (429). Esperando ${delayMs / 1000}s antes de reintentar...`);
-          await sleep(delayMs);
+          if (retryCount < MAX_RETRIES) {
+            retryCount++;
+            // Espera con Backoff Exponencial
+            let delayMs = BACKOFF_BASE_MS * Math.pow(2, retryCount);
+            
+            // Intentar extraer segundos de espera del mensaje del servidor si los hay (ej: "Please retry in 22.4s")
+            const match = err.message.match(/retry in ([\d\.]+)\s*s/i);
+            if (match && match[1]) {
+              const seconds = Math.ceil(parseFloat(match[1]));
+              if (seconds > 0) {
+                delayMs = Math.max(delayMs, seconds * 1000);
+              }
+            }
+
+            console.warn(`  ⚠️  Modelo "${modelLabel}" superó límite de cuota (429). Esperando ${(delayMs / 1000).toFixed(1)}s antes de reintentar el mismo modelo...`);
+            await sleep(delayMs);
+            // Seguir en el bucle while de reintentos para el mismo modelo
+          } else {
+            console.warn(`  ⚠️  Modelo "${modelLabel}" superó límite de cuota (429) tras agotar los ${MAX_RETRIES} reintentos. Cambiando al siguiente...`);
+            break; // Terminar reintentos, pasar al siguiente en el fallback
+          }
         } else if (statusCode >= 500) {
           // Server error: switch immediately
           console.warn(`  ⚠️  Modelo "${modelLabel}" falló con error de servidor (${statusCode}). Detalle: ${err.message}. Cambiando al siguiente de inmediato...`);
+          break;
         } else {
           // Other errors: switch immediately
           console.warn(`  ⚠️  Modelo "${modelLabel}" falló (${statusCode || 'error de red'}). Detalle: ${err.message}. Cambiando al siguiente...`);
+          break;
         }
       }
+    } // fin de while de reintentos
+
+    if (isLastModel && !success) {
+      console.error(`  ❌ Todos los modelos del catálogo de proveedores fallaron.`);
+    }
   }
 
   throw lastError;
