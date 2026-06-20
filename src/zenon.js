@@ -2135,28 +2135,57 @@ Please answer the user query based on the codebase knowledge base and the live c
 
       console.log(`Found code changes with a diff of ${diffContent.length} characters.`);
 
+      // Helper function to resolve, normalize and validate explicit doc paths (Path Traversal guard)
+      function validateAndResolveDocPath(filePath) {
+        const resolved = path.resolve(filePath);
+        const resolvedNorm = resolved.toLowerCase().replace(/\\/g, '/');
+        const cwdNorm = process.cwd().toLowerCase().replace(/\\/g, '/');
+
+        if (!resolvedNorm.startsWith(cwdNorm)) {
+          throw new Error(`Path traversal attempt detected: ${filePath}`);
+        }
+        if (!fs.existsSync(resolved)) {
+          throw new Error(`Documentation file not found: ${filePath}`);
+        }
+        if (!resolvedNorm.endsWith('.md')) {
+          throw new Error(`Only markdown files (.md) are allowed: ${filePath}`);
+        }
+        return path.relative(process.cwd(), resolved);
+      }
+
       // 2. Discover target documentation files to check/update
       let docFiles = [];
       const explicitDocs = cliArgs.docs || process.env.INPUT_DOCS || '';
       if (explicitDocs) {
-        docFiles = explicitDocs.split(',').map(f => f.trim()).filter(Boolean);
+        const rawDocs = explicitDocs.split(',').map(f => f.trim()).filter(Boolean);
+        for (const rawPath of rawDocs) {
+          try {
+            const validatedPath = validateAndResolveDocPath(rawPath);
+            docFiles.push(validatedPath);
+          } catch (e) {
+            console.warn(`  ⚠️ [updater] Path validation failed for "${rawPath}": ${e.message}`);
+            if (e.message.includes('Path traversal')) {
+              throw e;
+            }
+          }
+        }
       } else {
         // Auto-detect root md files and docs/ folder md files
+        const internalDocs = new Set([
+          'zenon_plan.md', 'zenon_objective.md', 'zenon_report.md',
+          'changelog.md', 'contributing.md', 'license.md',
+          'code_of_conduct.md', 'security.md', 'pull_request_template.md',
+          'issue_template.md'
+        ]);
+
         docFiles = files.filter(file => {
           const lower = file.toLowerCase();
           const ext = lower.split('.').pop();
           if (ext !== 'md') return false;
 
-          // Exclude internal files
+          // Exclude internal files and policies
           const base = path.basename(file).toLowerCase();
-          if ([
-            'zenon_plan.md',
-            'zenon_objective.md',
-            'zenon_report.md',
-            'changelog.md',
-            'contributing.md',
-            'license.md'
-          ].includes(base)) {
+          if (internalDocs.has(base)) {
             return false;
           }
 
