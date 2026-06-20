@@ -93,4 +93,4 @@ jobs:
           to: ${{ inputs.notify-email }}
           from: Zenon DevOpser
           body: file://zenon_report.md
-          content_type: text/markdown
+          convert_markdown: true
