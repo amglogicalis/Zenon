@@ -6,7 +6,7 @@ const crypto = require('crypto');
 // =============================================================================
 // Configuración dinámica de URLs de logos (para portabilidad en forks y branches)
 // =============================================================================
-const GITHUB_REPO = process.env.GITHUB_REPOSITORY || 'amglogicalis/Zenon';
+const GITHUB_REPO = process.env.GITHUB_REPOSITORY || 'amglogicalis/Zenon'; //test comment
 const GITHUB_REF = process.env.GITHUB_REF_NAME || 'main';
 const LOGO_BASE_URL = `https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_REF}/assets/logos`;
 
