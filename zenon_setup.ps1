@@ -493,11 +493,11 @@ if (-not $GitChoiceInput) { $GitChoiceInput = "n" }
 if ($GitChoiceInput.ToLower().Trim() -eq "s" -or $GitChoiceInput.ToLower().Trim() -eq "si" -or $GitChoiceInput.ToLower().Trim() -eq "y" -or $GitChoiceInput.ToLower().Trim() -eq "yes") {
     Write-Host "Haciendo git add, commit y push..." -ForegroundColor Yellow
     try {
-        git add .github/workflows/*
-        if (Test-Path "zenon_devops.md") { git add zenon_devops.md }
-        if (Test-Path "zenon_objective.md") { git add zenon_objective.md }
-        git commit -m "chore: setup Zenon Polis workflows and configurations"
-        git push
+        git add .github/workflows/* *>$null
+        if (Test-Path "zenon_devops.md") { git add zenon_devops.md *>$null }
+        if (Test-Path "zenon_objective.md") { git add zenon_objective.md *>$null }
+        git commit -m "chore: setup Zenon Polis workflows and configurations" *>$null
+        git push *>$null
         if ($LASTEXITCODE -ne 0) {
             throw "Git push failed"
         }
@@ -507,17 +507,16 @@ if ($GitChoiceInput.ToLower().Trim() -eq "s" -or $GitChoiceInput.ToLower().Trim(
     }
 }
 
-# 8. Preguntar si se desean configurar los secrets/variables desde aquí
+# 8. Preguntar si se desean configurar las variables de auto-ejecución
 Write-Host ""
-$SecretChoiceInput = Get-NextInput
-if (-not $SecretChoiceInput) {
-    $SecretChoiceInput = Read-Host "Quieres configurar desde aqui los secrets y variables? [s/N]"
+$VarChoiceInput = Get-NextInput
+if (-not $VarChoiceInput) {
+    $VarChoiceInput = Read-Host "Quieres configurar las variables de auto-ejecucion de los flujos? [s/N]"
 }
-if (-not $SecretChoiceInput) { $SecretChoiceInput = "n" }
+if (-not $VarChoiceInput) { $VarChoiceInput = "n" }
 
-if ($SecretChoiceInput.ToLower().Trim() -eq "s" -or $SecretChoiceInput.ToLower().Trim() -eq "si" -or $SecretChoiceInput.ToLower().Trim() -eq "y" -or $SecretChoiceInput.ToLower().Trim() -eq "yes") {
+if ($VarChoiceInput.ToLower().Trim() -eq "s" -or $VarChoiceInput.ToLower().Trim() -eq "si" -or $VarChoiceInput.ToLower().Trim() -eq "y" -or $VarChoiceInput.ToLower().Trim() -eq "yes") {
     if (Get-Command gh -ErrorAction SilentlyContinue) {
-        # 8a. Configurar variables de auto-ejecución si aplica
         # Reviewer Auto Execution (sólo si se seleccionó la opción 1)
         if ($SelectedOptions -contains 1) {
             $AutoReviewChoice = Get-NextInput
@@ -559,8 +558,22 @@ if ($SecretChoiceInput.ToLower().Trim() -eq "s" -or $SecretChoiceInput.ToLower()
                 Write-Host "❌ Error al configurar la variable ZENON_DISABLE_AUTO_UPDATE." -ForegroundColor Red
             }
         }
+    } else {
+        Write-Host "❌ El comando 'gh' (GitHub CLI) no está instalado en el sistema." -ForegroundColor Red
+        Write-Host "Instálalo y ejecuta 'gh auth login' antes de configurar variables desde consola." -ForegroundColor Yellow
+    }
+}
 
-        # 8c. API Key de Gemini
+# 9. Preguntar si se desean configurar los secrets desde aquí
+Write-Host ""
+$SecretChoiceInput = Get-NextInput
+if (-not $SecretChoiceInput) {
+    $SecretChoiceInput = Read-Host "Quieres configurar los secrets (API Keys) de GitHub? [s/N]"
+}
+if (-not $SecretChoiceInput) { $SecretChoiceInput = "n" }
+
+if ($SecretChoiceInput.ToLower().Trim() -eq "s" -or $SecretChoiceInput.ToLower().Trim() -eq "si" -or $SecretChoiceInput.ToLower().Trim() -eq "y" -or $SecretChoiceInput.ToLower().Trim() -eq "yes") {
+    if (Get-Command gh -ErrorAction SilentlyContinue) {
         $GeminiKeyInput = Get-NextInput
         if (-not $GeminiKeyInput) {
             $GeminiKeyInput = Read-Host "Pega la API Key de Gemini (ZENON_API_KEY)"
@@ -576,10 +589,9 @@ if ($SecretChoiceInput.ToLower().Trim() -eq "s" -or $SecretChoiceInput.ToLower()
         } else {
             Write-Host "No se ha introducido ninguna clave." -ForegroundColor Yellow
         }
-
     } else {
         Write-Host "❌ El comando 'gh' (GitHub CLI) no está instalado en el sistema." -ForegroundColor Red
-        Write-Host "Instálalo y ejecuta 'gh auth login' antes de configurar secretos y variables desde consola." -ForegroundColor Yellow
+        Write-Host "Instálalo y ejecuta 'gh auth login' antes de configurar secretos desde consola." -ForegroundColor Yellow
     }
 }
 

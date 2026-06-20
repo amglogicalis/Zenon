@@ -468,11 +468,11 @@ git_choice=$(echo "$git_choice" | tr -d '\r' | tr '[:upper:]' '[:lower:]' | xarg
 
 if [ "$git_choice" = "s" ] || [ "$git_choice" = "y" ] || [ "$git_choice" = "si" ] || [ "$git_choice" = "yes" ]; then
     echo -e "${YELLOW}Haciendo git add, commit y push...${NC}"
-    git add .github/workflows/*
-    if [ -f "zenon_devops.md" ]; then git add zenon_devops.md; fi
-    if [ -f "zenon_objective.md" ]; then git add zenon_objective.md; fi
-    if git commit -m "chore: setup Zenon Polis workflows and configurations"; then
-        if git push; then
+    git add .github/workflows/* >/dev/null 2>&1
+    if [ -f "zenon_devops.md" ]; then git add zenon_devops.md >/dev/null 2>&1; fi
+    if [ -f "zenon_objective.md" ]; then git add zenon_objective.md >/dev/null 2>&1; fi
+    if git commit -m "chore: setup Zenon Polis workflows and configurations" >/dev/null 2>&1; then
+        if git push >/dev/null 2>&1; then
             echo -e "${GREEN}✅ Cambios subidos a GitHub con éxito.${NC}"
         else
             echo -e "${RED}❌ Error al ejecutar 'git push'. Asegúrate de tener permisos para subir a esta rama.${NC}"
@@ -482,17 +482,17 @@ if [ "$git_choice" = "s" ] || [ "$git_choice" = "y" ] || [ "$git_choice" = "si" 
     fi
 fi
 
-# 8. Preguntar si se desean configurar los secrets/variables desde aquí
+# 8. Preguntar si se desean configurar las variables de auto-ejecución
 echo ""
-read -p "Quieres configurar desde aqui los secrets y variables? [s/N]: " secret_choice
-if [ -z "$secret_choice" ]; then
-    secret_choice="n"
+read -p "Quieres configurar las variables de auto-ejecucion de los flujos? [s/N]: " var_choice
+if [ -z "$var_choice" ]; then
+    var_choice="n"
 fi
-secret_choice=$(echo "$secret_choice" | tr -d '\r' | tr '[:upper:]' '[:lower:]' | xargs)
+var_choice=$(echo "$var_choice" | tr -d '\r' | tr '[:upper:]' '[:lower:]' | xargs)
 
-if [ "$secret_choice" = "s" ] || [ "$secret_choice" = "y" ] || [ "$secret_choice" = "si" ] || [ "$secret_choice" = "yes" ]; then
+if [ "$var_choice" = "s" ] || [ "$var_choice" = "y" ] || [ "$var_choice" = "si" ] || [ "$var_choice" = "yes" ]; then
     if command -v gh &> /dev/null; then
-        # 8a. Reviewer Auto Execution (sólo si se seleccionó la opción 1)
+        # Reviewer Auto Execution (sólo si se seleccionó la opción 1)
         contains_element 1 "${selected_options[@]}" && has_reviewer=true || has_reviewer=false
         if [ "$has_reviewer" = true ]; then
             read -p "Quieres que Zenon Reviewer se ejecute automaticamente en cada pull request o commit? [S/n]: " auto_review_choice
@@ -533,8 +533,22 @@ if [ "$secret_choice" = "s" ] || [ "$secret_choice" = "y" ] || [ "$secret_choice
                 echo -e "${RED}❌ Error al configurar la variable ZENON_DISABLE_AUTO_UPDATE.${NC}"
             fi
         fi
+    else
+        echo -e "${RED}❌ El comando 'gh' (GitHub CLI) no está instalado en el sistema.${NC}"
+        echo -e "${YELLOW}Instálalo y ejecuta 'gh auth login' antes de configurar variables desde consola.${NC}"
+    fi
+fi
 
-        # 8c. API Key de Gemini
+# 9. Preguntar si se desean configurar los secrets desde aquí
+echo ""
+read -p "Quieres configurar los secrets (API Keys) de GitHub? [s/N]: " secret_choice
+if [ -z "$secret_choice" ]; then
+    secret_choice="n"
+fi
+secret_choice=$(echo "$secret_choice" | tr -d '\r' | tr '[:upper:]' '[:lower:]' | xargs)
+
+if [ "$secret_choice" = "s" ] || [ "$secret_choice" = "y" ] || [ "$secret_choice" = "si" ] || [ "$secret_choice" = "yes" ]; then
+    if command -v gh &> /dev/null; then
         read -p "Pega la API Key de Gemini (ZENON_API_KEY): " gemini_key
         gemini_key=$(echo "$gemini_key" | tr -d '\r' | xargs)
         if [ -n "$gemini_key" ]; then
@@ -549,7 +563,7 @@ if [ "$secret_choice" = "s" ] || [ "$secret_choice" = "y" ] || [ "$secret_choice
         fi
     else
         echo -e "${RED}❌ El comando 'gh' (GitHub CLI) no está instalado en el sistema.${NC}"
-        echo -e "${YELLOW}Instálalo y ejecuta 'gh auth login' antes de configurar secretos y variables desde consola.${NC}"
+        echo -e "${YELLOW}Instálalo y ejecuta 'gh auth login' antes de configurar secretos desde consola.${NC}"
     fi
 fi
 
