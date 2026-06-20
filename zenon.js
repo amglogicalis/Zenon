@@ -1196,7 +1196,13 @@ async function main() {
   console.log(`GitHub Token : ${githubToken ? 'found ✅' : 'not set (PR comments disabled)'}`);
   console.log(`Exclude      : "${exclude || '(none)'}"`);
   if (mode === 'objective') {
-    console.log(`Objective    : "${objectiveFile}"`);
+    const isFile = fs.existsSync(path.resolve(process.cwd(), objectiveFile));
+    if (isFile) {
+      console.log(`Objective    : File "${objectiveFile}"`);
+    } else {
+      const showText = objectiveFile.length > 50 ? objectiveFile.substring(0, 50) + '...' : objectiveFile;
+      console.log(`Objective    : Text "${showText}"`);
+    }
   } else if (mode === 'trainer') {
     console.log(`Topic        : "${topic || '(none)'}"`);
   }
@@ -1240,23 +1246,31 @@ async function main() {
   }
 
   // =============================================================================
-  // PASO 4: Modo Objective — Leer el archivo de objetivos
+  // PASO 4: Modo Objective — Leer el objetivo (desde texto directo o archivo)
   // =============================================================================
   let objectiveContent = '';
   if (mode === 'objective') {
-    const objectivePath = path.resolve(process.cwd(), objectiveFile);
-    if (!fs.existsSync(objectivePath)) {
-      console.error(`❌ Archivo de objetivos no encontrado: "${objectiveFile}"`);
-      console.error(`   Crea el archivo "${objectiveFile}" en la raíz del repositorio y describe el objetivo.`);
-      console.error(`   O indica la ruta correcta con --objective <ruta>`);
-      process.exit(1);
+    const directObjective = process.env.INPUT_OBJECTIVE || '';
+    if (directObjective.trim()) {
+      objectiveContent = directObjective.trim();
+      console.log(`🎯 Objetivo cargado desde variable de entorno (${objectiveContent.length} caracteres)`);
+    } else if (objectiveFile) {
+      const objectivePath = path.resolve(process.cwd(), objectiveFile);
+      if (fs.existsSync(objectivePath)) {
+        objectiveContent = fs.readFileSync(objectivePath, 'utf8').trim();
+        console.log(`🎯 Objetivo cargado desde archivo: ${objectiveFile} (${objectiveContent.length} caracteres)`);
+      } else {
+        // Si no existe como archivo físico, se asume que el valor de entrada es el texto directo del objetivo
+        objectiveContent = objectiveFile.trim();
+        console.log(`🎯 Objetivo cargado desde texto directo (${objectiveContent.length} caracteres)`);
+      }
     }
-    objectiveContent = fs.readFileSync(objectivePath, 'utf8').trim();
+
     if (!objectiveContent) {
-      console.error(`❌ El archivo de objetivos "${objectiveFile}" está vacío. Escribe el objetivo antes de ejecutar Zenon.`);
+      console.error(`❌ No se ha proporcionado un objetivo para implementar.`);
+      console.error(`   Usa --objective "<tu objetivo en texto directo>" o crea un archivo "zenon_objective.md" en la raíz.`);
       process.exit(1);
     }
-    console.log(`🎯 Objetivo cargado desde: ${objectiveFile} (${objectiveContent.length} caracteres)`);
   }
 
   console.log(`Zenon starting...`);

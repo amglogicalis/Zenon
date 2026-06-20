@@ -194,8 +194,11 @@ Hemos creado dos scripts ligeros para automatizar la carga de variables del arch
     # Autocorrección (Correct)
     .\zenon.ps1 --mode correct
     
-    # Cumplimiento de Objetivo (Objective)
+    # Cumplimiento de Objetivo (Objective) — leyendo desde archivo
     .\zenon.ps1 --mode objective --objective .\zenon_objective.md
+    
+    # Cumplimiento de Objetivo (Objective) — texto directo sin necesidad de archivo
+    .\zenon.ps1 --mode objective --objective "Añade validación de entrada a src/api.js"
     ```
 *   **En Linux / macOS:**
     ```bash
@@ -207,8 +210,11 @@ Hemos creado dos scripts ligeros para automatizar la carga de variables del arch
     # Autocorrección (Correct)
     ./zenon.sh --mode correct
     
-    # Cumplimiento de Objetivo (Objective)
+    # Cumplimiento de Objetivo (Objective) — leyendo desde archivo
     ./zenon.sh --mode objective --objective zenon_objective.md
+    
+    # Cumplimiento de Objetivo (Objective) — texto directo sin necesidad de archivo
+    ./zenon.sh --mode objective --objective "Añade validación de entrada a src/api.js"
     ```
 
 ---
@@ -225,8 +231,9 @@ Hemos creado dos scripts ligeros para automatizar la carga de variables del arch
 | `cerebras-api-key` | API Key para Cerebras. | No | — |
 | `gh-models-token` | Token personal para GitHub Models (no debe empezar por GITHUB_). | No | — |
 | `token-gh` | Token alternativo (secret: TOKEN_GH) para GitHub Models. | No | — |
-| `mode` | Modo de ejecución: `assist`, `correct` u `objective`. | No | `assist` |
-| `objective-file` | Archivo Markdown de directivas para el modo `objective`. | No | `zenon_objective.md` |
+| `mode` | Modo de ejecución: `assist`, `correct`, `objective` o `trainer`. | No | `assist` |
+| `objective-file` | Archivo/Ruta de directivas para el modo `objective` (si el archivo no existe, el valor se interpretará directamente como el texto del objetivo). | No | `zenon_objective.md` |
+| `objective` | Texto directo del objetivo a implementar en modo `objective` (tiene precedencia sobre `objective-file`). | No | — |
 | `exclude` | Archivos/rutas separados por comas que se deben ignorar. | No | `""` |
 | `github-token` | Token interno de GitHub para push y comentarios. | No | `${{ github.token }}` |
 
