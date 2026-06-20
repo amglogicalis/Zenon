@@ -2033,6 +2033,10 @@ Return the structured, professional technical profile now.`;
 
       console.log(`Found diff of ${diffContent.length} characters.`);
 
+      const formatRules = isCI
+        ? `- Format your review report in clean Markdown using headings, tables, code blocks, and alerts (> [!WARNING] / > [!IMPORTANT]).`
+        : `- Format your review report in clean Markdown. To ensure high readability on local CLI terminals, do NOT use tables. Instead, list each finding using bullet points under the appropriate headings, detailing File, Line, Severity/Risk, Issue/Description, and Fix/Remediation as bullet points. Use code blocks and alerts (> [!WARNING] / > [!IMPORTANT]) where applicable.`;
+
       let reviewerSystemInstruction = `You are "Zenon", a principal software engineer and expert code reviewer.
 Your task is to review the code changes (git diff) provided by the user.
 Analyze the changes to:
@@ -2043,7 +2047,7 @@ Analyze the changes to:
 CRITICAL RULES:
 - Only report issues directly related to the changed code (lines starting with '+' or '-'). Do not comment on unchanged code.
 - Be concise and technical. Avoid generic advice, introductory boilerplate, or conversational preamble.
-- Format your review report in clean Markdown using headings, tables, code blocks, and alerts (> [!WARNING] / > [!IMPORTANT]).
+${formatRules}
 - Start directly with the first section heading.`;
 
       if (cachedKnowledge) {
@@ -3427,6 +3431,35 @@ Implement the objective fully. Return ONLY the raw JSON (no markdown, no explana
 
     console.log('🎯 Zenon is implementing the objective...');
   } else {
+    const bugsFormat = isCI
+      ? `## 🛠️ Bugs & Functional Issues
+| Severity | File | Line | Issue | Fix |
+|----------|------|------|-------|-----|`
+      : `## 🛠️ Bugs & Functional Issues
+For each finding, list the following attributes using bullet points:
+- **File**: <relative path> (Line <number>)
+- **Severity**: <Critical/Medium/Low>
+- **Issue**: <detailed description>
+- **Fix**: <actionable solution and corrected code block>`;
+
+    const securityFormat = isCI
+      ? `## 🔒 Security Vulnerabilities
+| Risk | File | Description | Remediation |
+|------|------|-------------|-------------|`
+      : `## 🔒 Security Vulnerabilities
+For each finding, list the following attributes using bullet points:
+- **File**: <relative path> (Line <number>)
+- **Risk**: <Critical/High/Medium/Low>
+- **Description**: <detailed description>
+- **Remediation**: <actionable solution and secure code block>`;
+
+    const summaryFormat = isCI
+      ? `## 📊 Summary
+| Category | Issues Found | Critical |
+|----------|-------------|----------|`
+      : `## 📊 Summary
+List the total count of issues and critical violations found per category (Bugs, Security, Performance, Code Quality) using simple bullet points.`;
+
     systemInstruction = isCorrectMode
       ? `You are Zenon, a principal-level software engineer performing automated code correction.
 
@@ -3448,13 +3481,9 @@ CRITICAL RULES — follow without exception:
 
 REPORT FORMAT — use this exact structure in clean Markdown:
 
-## 🛠️ Bugs & Functional Issues
-| Severity | File | Line | Issue | Fix |
-|----------|------|------|-------|-----|
+${bugsFormat}
 
-## 🔒 Security Vulnerabilities
-| Risk | File | Description | Remediation |
-|------|------|-------------|-------------|
+${securityFormat}
 
 ## ⚡ Performance Improvements
 For each issue: describe the bottleneck, show the problematic code snippet, and provide the optimized replacement.
@@ -3462,9 +3491,7 @@ For each issue: describe the bottleneck, show the problematic code snippet, and 
 ## 🧼 Code Quality & Best Practices
 For each issue: reference the specific file/function, explain why it is a problem, and provide a corrected code snippet.
 
-## 📊 Summary
-| Category | Issues Found | Critical |
-|----------|-------------|----------|
+${summaryFormat}
 
 Use \`> [!WARNING]\` for critical security or data-loss risks.
 Use \`> [!IMPORTANT]\`  for breaking changes or high-impact refactors.
