@@ -497,6 +497,9 @@ if ($GitChoiceInput.ToLower().Trim() -eq "s" -or $GitChoiceInput.ToLower().Trim(
         if (Test-Path "zenon_objective.md") { git add zenon_objective.md }
         git commit -m "chore: setup Zenon Polis workflows and configurations"
         git push
+        if ($LASTEXITCODE -ne 0) {
+            throw "Git push failed"
+        }
         Write-Host "✅ Cambios subidos a GitHub con éxito." -ForegroundColor Green
     } catch {
         Write-Host "❌ Error al subir los cambios a Git. Asegúrate de tener Git configurado y permisos para subir a esta rama." -ForegroundColor Red
