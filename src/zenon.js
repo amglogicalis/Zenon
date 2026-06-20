@@ -2135,13 +2135,14 @@ Please answer the user query based on the codebase knowledge base and the live c
 
       console.log(`Found code changes with a diff of ${diffContent.length} characters.`);
 
+      const CWD_NORM = process.cwd().toLowerCase().replace(/\\/g, '/');
+
       // Helper function to resolve, normalize and validate explicit doc paths (Path Traversal guard)
-      function validateAndResolveDocPath(filePath) {
+      function validateAndGetRelativeDocPath(filePath) {
         const resolved = path.resolve(filePath);
         const resolvedNorm = resolved.toLowerCase().replace(/\\/g, '/');
-        const cwdNorm = process.cwd().toLowerCase().replace(/\\/g, '/');
 
-        if (!resolvedNorm.startsWith(cwdNorm)) {
+        if (!resolvedNorm.startsWith(CWD_NORM)) {
           throw new Error(`Path traversal attempt detected: ${filePath}`);
         }
         if (!fs.existsSync(resolved)) {
@@ -2160,13 +2161,11 @@ Please answer the user query based on the codebase knowledge base and the live c
         const rawDocs = explicitDocs.split(',').map(f => f.trim()).filter(Boolean);
         for (const rawPath of rawDocs) {
           try {
-            const validatedPath = validateAndResolveDocPath(rawPath);
+            const validatedPath = validateAndGetRelativeDocPath(rawPath);
             docFiles.push(validatedPath);
           } catch (e) {
-            console.warn(`  ⚠️ [updater] Path validation failed for "${rawPath}": ${e.message}`);
-            if (e.message.includes('Path traversal')) {
-              throw e;
-            }
+            console.error(`❌ [updater] Path validation failed for "${rawPath}": ${e.message}`);
+            throw e; // Fail-fast on explicit invalid inputs
           }
         }
       } else {

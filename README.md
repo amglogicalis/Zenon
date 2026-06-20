@@ -285,6 +285,17 @@ Puedes usar directamente las sub-acciones específicas de Polis sin invocar la a
     github-token: ${{ secrets.GITHUB_TOKEN }} # Requerido para commits en CI
 ```
 
+### C. Desactivar o Activar la Ejecución Automática (Push/PR)
+
+Si deseas desactivar la ejecución automática de los flujos de **Zenon Reviewer** y **Zenon Updater** en cada `push` o `pull_request` (por ejemplo, para evitar consumo innecesario de cuotas de API) y que **solo se ejecuten de forma manual**, puedes configurar variables o secretos en los ajustes de tu repositorio sin tener que modificar los archivos YAML.
+
+* **Desactivar Auditoría Automática de Código (Reviewer)**:
+  Crea una Variable de Repositorio (Repository Variable) o Secreto (Secret) llamado `ZENON_DISABLE_AUTO_REVIEW` y asígnale el valor `true`.
+* **Desactivar Sincronización Automática de Documentos (Updater)**:
+  Crea una Variable de Repositorio (Repository Variable) o Secreto (Secret) llamado `ZENON_DISABLE_AUTO_UPDATE` y asígnale el valor `true`.
+
+Una vez configurados como `true`, los flujos correspondientes se saltarán automáticamente en ejecuciones automáticas de commits y PRs. Sin embargo, **podrás seguir lanzándolos manualmente** en cualquier momento desde la interfaz de GitHub (pestaña **Actions** -> Seleccionar flujo -> **Run workflow**).
+
 ---
 
 ## 📊 Variables de Entorno para CLI Local
