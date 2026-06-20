@@ -6,7 +6,7 @@ on:
       query:
         description: 'Pregunta o duda sobre la base de código'
         required: true
-        default: '¿Qué lenguajes y patrones arquitectónicos utiliza este repositorio?'
+        default: ''
 
 jobs:
   help:
