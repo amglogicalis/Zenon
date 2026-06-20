@@ -254,6 +254,49 @@ chmod +x zenon_setup.sh
 
 ---
 
+
+### A. Para Uso Local en la Terminal (Cualquier PC)
+
+Si tienes otro ordenador y quieres usar Zenon en tus proyectos locales:
+
+1. **Copia los archivos mínimos de Zenon**:
+   Solo necesitas copiar a una carpeta de tu ordenador (por ejemplo, `C:\Herramientas\Zenon` o `/usr/local/share/zenon`):
+   * [src/zenon.js](./src/zenon.js)
+   * [src/zenon_models.json](./src/zenon_models.json)
+   * [zenon.ps1](./zenon.ps1) (para Windows)
+   * [zenon.sh](./zenon.sh) (para Linux/macOS)
+2. **Configura tus credenciales**:
+   Crea un archivo `.env` en la misma carpeta donde colocaste `zenon.js` con tus claves API.
+3. **¡No copies los scripts a cada proyecto!** (Uso mediante PATH):
+   No es necesario que dupliques los archivos de Zenon dentro de cada uno de tus repositorios. Puedes ejecutarlo de dos formas:
+   * **Llamándolo por su ruta absoluta**:
+     ```powershell
+     # Desde la carpeta de cualquier otro proyecto:
+     C:\Herramientas\Zenon\zenon.ps1 --mode helper --topic "Explícame este repo"
+     ```
+   * **Añadiendo Zenon al PATH**:
+     Añade la ruta `C:\Herramientas\Zenon` (o la ruta en tu sistema operativo) al `PATH` de tu sistema. Así podrás escribir simplemente en cualquier consola de cualquier proyecto:
+     ```bash
+     zenon --mode assist
+     ```
+4. **Heredar el conocimiento acumulado (Opcional)**:
+   Si quieres que Zenon no empiece de cero a analizar tu código en la nueva máquina, puedes copiar el archivo [.zenon_cache.json](./.zenon_cache.json) generado en tu PC anterior a la raíz del nuevo proyecto. De lo contrario, Zenon creará un nuevo archivo de caché automáticamente en su primera ejecución.
+
+---
+
+### B. Para Uso Remoto en GitHub Actions (Cualquier Repositorio)
+
+Para integrar Zenon en el flujo de integración continua (CI) de cualquier otro repositorio de GitHub, haz lo siguiente:
+
+1. **Registrar las claves en los Secrets**:
+   En el repositorio destino, ve a **Settings → Secrets and variables → Actions** y añade las claves de API como secretos (ej. `ZENON_API_KEY`, `SAMBA_API_KEY`, etc.).
+2. **Configurar el Workflow de GitHub**:
+   Crea un archivo de configuración en `.github/workflows/zenon.yml` de tu repositorio. Puedes invocar la acción principal de Zenon directamente apuntando a este repositorio central (como se muestra en el [apartado de configuración](#a-ejecutar-el-core-action-de-zenon-acci%C3%B3n-principal)).
+3. **Ejecutar Sub-módulos Especializados de Forma Independiente**:
+   Si quieres ejecutar específicamente el **Helper** o el **Analyzer** como pasos separados en tus workflows de otros repositorios, puedes invocarlos directamente indicando su sub-ruta en la acción (como se detalla en el [apartado de sub-acciones](#b-usar-sub-acciones-independientes-de-zenon-polis)).
+
+---
+
 ## 🚀 Guía de Uso de las Funciones
 
 ### Uso en Local (Terminal)
@@ -418,77 +461,6 @@ TOKEN_GH=ghp_...
 | `notify-webhook` | URL de webhook Discord/Slack para notificar el resultado de DevOpser (opcional). | No | — |
 | `exclude` | Rutas o archivos separados por comas que se deben excluir del análisis. | No | `""` |
 | `reset-stats` | Indica si se deben resetear las estadísticas a cero en modo `analyzer`. | No | `false` |
-
----
-
-## 💻 Cómo Exportar y Traer Zenon a otros PCs o Repositorios
-
-Puedes configurar todo el ecosistema de Zenon en cualquier repositorio o PC de forma automatizada mediante los scripts de configuración, o de forma manual siguiendo los pasos detallados a continuación.
-
-### ⚡ Importación y Configuración Automática (Recomendado)
-
-Disponemos de asistentes interactivos de configuración en PowerShell (`zenon_setup.ps1`) para Windows y en Bash (`zenon_setup.sh`) para Linux/macOS. Estos scripts te preguntarán qué módulos deseas importar, cuántos proveedores de IA configurar y crearán automáticamente todos los archivos de workflow en `.github/workflows/` junto con sus plantillas de configuración asociadas. Además, te ofrecerán la posibilidad de subir directamente los cambios a GitHub (commit & push automático) y configurar tus secretos de API (`ZENON_API_KEY`) y variables de control (`ZENON_DISABLE_AUTO_REVIEW`, `ZENON_DISABLE_AUTO_UPDATE`) de forma automática en tu repositorio usando la CLI de GitHub (`gh`).
-
-#### En Windows (PowerShell)
-Puedes descargar y ejecutar el script interactivamente en la raíz de tu repositorio objetivo con el siguiente comando en PowerShell:
-```powershell
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/amglogicalis/Zenon/main/zenon_setup.ps1" -OutFile "zenon_setup.ps1"
-.\zenon_setup.ps1
-# O ejecútalo con parámetros para una importación automática (ej. módulos 1, 2 y 7, y multiproveedor):
-# @("1,2,7", "2") | .\zenon_setup.ps1
-```
-
-#### En Linux / macOS / Git Bash (Bash)
-Puedes descargar y ejecutar el asistente de Bash en tu terminal:
-```bash
-curl -fsSL -o zenon_setup.sh https://raw.githubusercontent.com/amglogicalis/Zenon/main/zenon_setup.sh
-chmod +x zenon_setup.sh
-./zenon_setup.sh
-# O de forma desatendida/no interactiva:
-# printf "1,2,7\n2\n" | ./zenon_setup.sh
-```
-
----
-
-### A. Para Uso Local en la Terminal (Cualquier PC)
-
-Si tienes otro ordenador y quieres usar Zenon en tus proyectos locales:
-
-1. **Copia los archivos mínimos de Zenon**:
-   Solo necesitas copiar a una carpeta de tu ordenador (por ejemplo, `C:\Herramientas\Zenon` o `/usr/local/share/zenon`):
-   * [src/zenon.js](./src/zenon.js)
-   * [src/zenon_models.json](./src/zenon_models.json)
-   * [zenon.ps1](./zenon.ps1) (para Windows)
-   * [zenon.sh](./zenon.sh) (para Linux/macOS)
-2. **Configura tus credenciales**:
-   Crea un archivo `.env` en la misma carpeta donde colocaste `zenon.js` con tus claves API.
-3. **¡No copies los scripts a cada proyecto!** (Uso mediante PATH):
-   No es necesario que dupliques los archivos de Zenon dentro de cada uno de tus repositorios. Puedes ejecutarlo de dos formas:
-   * **Llamándolo por su ruta absoluta**:
-     ```powershell
-     # Desde la carpeta de cualquier otro proyecto:
-     C:\Herramientas\Zenon\zenon.ps1 --mode helper --topic "Explícame este repo"
-     ```
-   * **Añadiendo Zenon al PATH**:
-     Añade la ruta `C:\Herramientas\Zenon` (o la ruta en tu sistema operativo) al `PATH` de tu sistema. Así podrás escribir simplemente en cualquier consola de cualquier proyecto:
-     ```bash
-     zenon --mode assist
-     ```
-4. **Heredar el conocimiento acumulado (Opcional)**:
-   Si quieres que Zenon no empiece de cero a analizar tu código en la nueva máquina, puedes copiar el archivo [.zenon_cache.json](./.zenon_cache.json) generado en tu PC anterior a la raíz del nuevo proyecto. De lo contrario, Zenon creará un nuevo archivo de caché automáticamente en su primera ejecución.
-
----
-
-### B. Para Uso Remoto en GitHub Actions (Cualquier Repositorio)
-
-Para integrar Zenon en el flujo de integración continua (CI) de cualquier otro repositorio de GitHub, haz lo siguiente:
-
-1. **Registrar las claves en los Secrets**:
-   En el repositorio destino, ve a **Settings → Secrets and variables → Actions** y añade las claves de API como secretos (ej. `ZENON_API_KEY`, `SAMBA_API_KEY`, etc.).
-2. **Configurar el Workflow de GitHub**:
-   Crea un archivo de configuración en `.github/workflows/zenon.yml` de tu repositorio. Puedes invocar la acción principal de Zenon directamente apuntando a este repositorio central (como se muestra en el [apartado de configuración](#a-ejecutar-el-core-action-de-zenon-acci%C3%B3n-principal)).
-3. **Ejecutar Sub-módulos Especializados de Forma Independiente**:
-   Si quieres ejecutar específicamente el **Helper** o el **Analyzer** como pasos separados en tus workflows de otros repositorios, puedes invocarlos directamente indicando su sub-ruta en la acción (como se detalla en el [apartado de sub-acciones](#b-usar-sub-acciones-independientes-de-zenon-polis)).
 
 ---
 
