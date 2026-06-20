@@ -129,7 +129,7 @@ function getAvailableKeys(cliArgs) {
     openrouter:    cliArgs.openrouterApiKey  || process.env.INPUT_OPENROUTER_API_KEY  || process.env.OPENROUTER_API_KEY,
     samba:         cliArgs.sambaApiKey       || process.env.INPUT_SAMBA_API_KEY       || process.env.SAMBA_API_KEY,
     cerebras:      cliArgs.cerebrasApiKey    || process.env.INPUT_CEREBRAS_API_KEY    || process.env.CEREBRAS_API_KEY,
-    github_models: cliArgs.ghModelsToken     || cliArgs.githubModelsToken             || process.env.INPUT_GH_MODELS_TOKEN || process.env.GH_MODELS_TOKEN || process.env.INPUT_GITHUB_MODELS_TOKEN || process.env.GITHUB_MODELS_TOKEN || process.env.TOKEN_GH
+    github_models: cliArgs.ghModelsToken     || cliArgs.githubModelsToken             || process.env.INPUT_TOKEN_GH || process.env.TOKEN_GH || process.env.INPUT_GH_MODELS_TOKEN || process.env.GH_MODELS_TOKEN || process.env.INPUT_GITHUB_MODELS_TOKEN || process.env.GITHUB_MODELS_TOKEN
   };
 }
 
@@ -652,17 +652,23 @@ async function callGeminiModel(apiKey, model, mode, systemInstruction, prompt, e
     'gemini-2.5-flash':         { tier: 'large', maxTokens: 1048576, maxChars: 4000000 },
     'gemini-flash-lite-latest':  { tier: 'large', maxTokens: 1048576, maxChars: 4000000 },
     'gemini-3.1-flash-lite':     { tier: 'large', maxTokens: 1048576, maxChars: 4000000 },
+    'google/gemini-3.1-flash-lite': { tier: 'large', maxTokens: 1048576, maxChars: 4000000 },
     // Google Gemma
     'gemma-4-31b-it':            { tier: 'large', maxTokens: 256000, maxChars: 1000000 },
+    'gemma-4-31b':               { tier: 'large', maxTokens: 256000, maxChars: 1000000 },
     // OpenAI / GitHub Models
     'gpt-4o':                    { tier: 'medium', maxTokens: 128000, maxChars: 500000 },
     'gpt-4o-mini':               { tier: 'medium', maxTokens: 128000, maxChars: 500000 },
     'gpt-oss-120b':              { tier: 'medium', maxTokens: 128000, maxChars: 500000 },
     // Meta Llama
+    'meta-llama-3.1-405b-instruct': { tier: 'medium', maxTokens: 8000, maxChars: 28000 }, // strict limit for free tier
+    'meta-llama-3.1-8b-instruct':   { tier: 'small', maxTokens: 8000, maxChars: 28000 },  // strict limit for free tier
     'llama-3.1-405b-instruct':   { tier: 'medium', maxTokens: 128000, maxChars: 500000 },
     'llama-3.1-8b-instant':      { tier: 'small', maxTokens: 128000, maxChars: 500000 },
     'llama-3.3-70b-versatile':   { tier: 'small', maxTokens: 131072, maxChars: 520000 },
-    'meta-llama/llama-4-scout-17b-16e-instruct': { tier: 'medium', maxTokens: 10000000, maxChars: 40000000 }, // Groq may limit to 60k
+    'meta-llama-3.3-70b-instruct': { tier: 'medium', maxTokens: 128000, maxChars: 500000 },
+    'meta-llama/llama-3.3-70b-instruct:free': { tier: 'medium', maxTokens: 256000, maxChars: 1000000 },
+    'meta-llama/llama-4-scout-17b-16e-instruct': { tier: 'medium', maxTokens: 10000000, maxChars: 40000000 },
     // Qwen (Alibaba)
     'qwen/qwen3-coder:free':     { tier: 'medium', maxTokens: 256000, maxChars: 1000000 },
     'qwen/qwen3.6-27b':          { tier: 'medium', maxTokens: 262144, maxChars: 1050000 },
@@ -674,9 +680,10 @@ async function callGeminiModel(apiKey, model, mode, systemInstruction, prompt, e
     'cohere/north-mini-code:free': { tier: 'medium', maxTokens: 256000, maxChars: 1000000 },
     // Cerebras
     'zai-glm-4.7':               { tier: 'medium', maxTokens: 131072, maxChars: 500000 },
-    // SambaNova / OpenRouter / MiniMax (no official context found, assuming medium)
-    'DeepSeek-V3.2':             { tier: 'medium', maxTokens: 128000, maxChars: 500000 },
-    'MiniMax-M2.7':              { tier: 'medium', maxTokens: 128000, maxChars: 500000 }
+    // SambaNova / OpenRouter / MiniMax
+    'deepseek-v3.2':             { tier: 'medium', maxTokens: 128000, maxChars: 500000 },
+    'deepseek-v3-0324':          { tier: 'medium', maxTokens: 128000, maxChars: 500000 },
+    'minimax-m2.7':              { tier: 'medium', maxTokens: 128000, maxChars: 500000 }
   };
 
   /**
@@ -685,7 +692,8 @@ async function callGeminiModel(apiKey, model, mode, systemInstruction, prompt, e
    * and can truncate further if a precise maxChars limit is known.
    */
   function adaptSystemInstruction(systemInstruction, model) {
-    const profile = MODEL_PROFILES[model] || { tier: 'medium', maxTokens: 128000, maxChars: 500000 }; // Default profile
+    const modelKey = model.toLowerCase();
+    const profile = MODEL_PROFILES[modelKey] || MODEL_PROFILES[model] || { tier: 'medium', maxTokens: 128000, maxChars: 500000 }; // Default profile
     if (profile.tier === 'large') return systemInstruction;
 
     let adapted = systemInstruction;
@@ -698,23 +706,22 @@ async function callGeminiModel(apiKey, model, mode, systemInstruction, prompt, e
         .replace(/\n{3,}/g, '\n\n'); // Collapse excess blank lines
     }
 
+    if (profile.tier === 'small') {
+      // Further compress: strip the CRITICAL RULES block header, keep only the DO NOTs
+      adapted = adapted
+        .replace(/CRITICAL RULES — follow without exception:\n/, '')
+        .replace(/YOUR TASK:\n/, '')
+        .trim();
+    }
+
     // If a precise maxChars is defined, ensure adapted instruction fits
     if (profile.maxChars && adapted.length > profile.maxChars * 0.1) { // Reserve 10% for instruction
       adapted = adapted.substring(0, profile.maxChars * 0.1);
       console.warn(`System instruction truncated for ${model} to fit maxChars.`);
     }
+
     return adapted;
-
-  if (profile.tier === 'small') {
-    // Further compress: strip the CRITICAL RULES block header, keep only the DO NOTs
-    adapted = adapted
-      .replace(/CRITICAL RULES — follow without exception:\n/, '')
-      .replace(/YOUR TASK:\n/, '')
-      .trim();
   }
-
-  return adapted;
-}
 
 /**
  * Smart codebase truncation: cuts at file boundaries instead of mid-content,
@@ -984,12 +991,24 @@ function isLoopingResponse(text) {
     }
   }
 
+  // 3. Detección de repetición de frases consecutivas (ej. bucle en una sola línea o entre líneas)
+  const normalized = text.replace(/\s+/g, ' ');
+  const match = normalized.match(/(.{15,200}?)\1{3,}/);
+  if (match) {
+    const repeatingUnit = match[1];
+    // Evitar falsos positivos con repeticiones de un solo carácter (ej. "=================")
+    const isSingleChar = /^(.)\1+$/.test(repeatingUnit);
+    if (!isSingleChar) {
+      return true; // Bucle de frase detectado
+    }
+  }
+
   return false;
 }
 
 async function callWithFallback(chain, mode, systemInstruction, prompt, enableGrounding = false) {
   if (chain.length === 0) {
-    throw new Error('No API keys configured. Please configure at least one of: ZENON_API_KEY, GROQ_API_KEY, COHERE_API_KEY, OPENROUTER_API_KEY, SAMBA_API_KEY, CEREBRAS_API_KEY, GH_MODELS_TOKEN.');
+    throw new Error('No API keys configured. Please configure at least one of: ZENON_API_KEY, GROQ_API_KEY, COHERE_API_KEY, OPENROUTER_API_KEY, SAMBA_API_KEY, CEREBRAS_API_KEY, GH_MODELS_TOKEN / TOKEN_GH.');
   }
 
   let lastError;
@@ -1182,7 +1201,7 @@ async function main() {
     console.error('');
     console.error('❌ Ninguna API Key de proveedor está configurada.');
     console.error('   Configura al menos una de las siguientes variables de entorno:');
-    console.error('     ZENON_API_KEY, GROQ_API_KEY, COHERE_API_KEY, OPENROUTER_API_KEY, SAMBA_API_KEY, CEREBRAS_API_KEY, GH_MODELS_TOKEN');
+    console.error('     ZENON_API_KEY, GROQ_API_KEY, COHERE_API_KEY, OPENROUTER_API_KEY, SAMBA_API_KEY, CEREBRAS_API_KEY, GH_MODELS_TOKEN / TOKEN_GH');
     process.exit(1);
   }
 
@@ -1522,20 +1541,21 @@ Perform a deep technical review. Return ONLY the Markdown report — no preamble
       }
 
       if (!result.files || !Array.isArray(result.files)) {
-        console.log('Zenon did not find any files that require corrections.');
+        console.log('Zenon did not find any files that require changes.');
         if (isCI && process.env.GITHUB_STEP_SUMMARY) {
-          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '### <img src="https://raw.githubusercontent.com/amglogicalis/my-github-actions/main/logo.png" height="22" align="absmiddle" /> Zenon Auto-Correction\n\nNo corrections were found necessary for this codebase.\n');
+          const header = isObjectiveMode ? 'Zenon Objective Completion' : 'Zenon Auto-Correction';
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### <img src="https://raw.githubusercontent.com/amglogicalis/my-github-actions/main/logo.png" height="22" align="absmiddle" /> ${header}\n\nNo changes were found necessary for this codebase.\n`);
         }
         return;
       }
 
       const modifiedFiles = [];
-      console.log(`Zenon proposes corrections in ${result.files.length} files.`);
+      console.log(`Zenon proposes changes in ${result.files.length} files.`);
 
       for (const file of result.files) {
         const filePath = file.path;
         const newContent = file.content;
-        const explanation = file.explanation || 'No explanation provided.';
+        const explanation = file.reason || file.explanation || 'No explanation provided.';
 
         console.log(`\nApplying changes to: ${filePath}`);
         console.log(`Reason: ${explanation}`);
@@ -1551,24 +1571,41 @@ Perform a deep technical review. Return ONLY the Markdown report — no preamble
         modifiedFiles.push(filePath);
       }
 
-      console.log('\nAll corrections applied to local files.');
+      console.log('\nAll changes applied to local files.');
 
       if (isCI) {
         // Write report to step summary
-        let summaryContent = `### <img src="https://raw.githubusercontent.com/amglogicalis/my-github-actions/main/logo.png" height="22" align="absmiddle" /> Zenon Auto-Correction Applied\n\nZenon has analyzed your code and applied corrections to the following files:\n\n`;
+        let summaryContent = '';
+        if (isObjectiveMode) {
+          summaryContent = `### <img src="https://raw.githubusercontent.com/amglogicalis/my-github-actions/main/logo.png" height="22" align="absmiddle" /> Zenon Objective Completed\n\n`;
+          summaryContent += `**Goal/Objective**:\n> ${objectiveContent.replace(/\n/g, '\n> ')}\n\n`;
+          summaryContent += `Zenon has successfully implemented the objective by making changes to the following files:\n\n`;
+        } else {
+          summaryContent = `### <img src="https://raw.githubusercontent.com/amglogicalis/my-github-actions/main/logo.png" height="22" align="absmiddle" /> Zenon Auto-Correction Applied\n\n`;
+          summaryContent += `Zenon has analyzed your code and applied corrections to the following files:\n\n`;
+        }
         for (const file of result.files) {
-          summaryContent += `- **${file.path}**: ${file.explanation || 'Applied improvements'}\n`;
+          const reason = file.reason || file.explanation || 'Applied improvements';
+          summaryContent += `- **${file.path}**: ${reason}\n`;
         }
         fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summaryContent);
 
         // Commit and push changes
         commitAndPushChanges(modifiedFiles);
       } else {
-        console.log('\n[Local Mode] Corrections applied. You can use "git diff" to review changes.');
+        console.log('\n[Local Mode] Changes applied. You can use "git diff" to review changes.');
         // Write a local changes report
-        let localReport = `# Zenon Auto-Corrections Report\n\nThe following changes were applied to your local files:\n\n`;
+        let localReport = '';
+        if (isObjectiveMode) {
+          localReport = `# Zenon Objective Implementation Report\n\n`;
+          localReport += `**Goal/Objective**:\n> ${objectiveContent.replace(/\n/g, '\n> ')}\n\n`;
+          localReport += `The following changes were applied to your local files to achieve the objective:\n\n`;
+        } else {
+          localReport = `# Zenon Auto-Corrections Report\n\nThe following changes were applied to your local files:\n\n`;
+        }
         for (const file of result.files) {
-          localReport += `## File: ${file.path}\n**Explanation**: ${file.explanation || 'Applied improvements'}\n\n`;
+          const reason = file.reason || file.explanation || 'Applied improvements';
+          localReport += `## File: ${file.path}\n**Explanation**: ${reason}\n\n`;
         }
         fs.writeFileSync('zenon_report.md', localReport, 'utf8');
         console.log('Details written to zenon_report.md');

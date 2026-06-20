@@ -10,9 +10,27 @@
 # =============================================================================
 set -euo pipefail
 
-# Resolve the directory where this script lives (the repo root)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve the directory where this script lives (supporting symlinks)
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
 ZENON_JS="$SCRIPT_DIR/zenon.js"
+
+# Verify if zenon.js exists
+if [ ! -f "$ZENON_JS" ]; then
+  echo "" >&2
+  echo -e "\033[0;31m❌ [zenon.sh] Error: 'zenon.js' not found at: $ZENON_JS\033[0m" >&2
+  echo "   If you copied 'zenon.sh' to this repository, that is not necessary." >&2
+  echo "   You can run Zenon from this directory by calling it directly at its original location:" >&2
+  echo -e "     \033[0;36m/path/to/Zenon/zenon.sh --mode assist\033[0m" >&2
+  echo "   Or add the Zenon directory to your PATH, or symlink the script." >&2
+  echo "" >&2
+  exit 1
+fi
 
 # Source a local .env file if it exists (for local API keys)
 ENV_FILE="$SCRIPT_DIR/.env"

@@ -58,6 +58,7 @@ Lee un archivo markdown que describe un objetivo de desarrollo técnico específ
 Puedes integrar Zenon en cualquier repositorio privado o público para automatizar las revisiones o la autocorrección.
 
 ### 1. Configurar las Claves API en Secrets
+
 Obtén tus credenciales gratuitas de los proveedores que desees usar y añádelas como secretos del repositorio en **Settings → Secrets and variables → Actions → New repository secret**:
 *   `ZENON_API_KEY` o `GEMINI_API_KEY` *(Requerido - Clave de Google AI Studio)*
 *   `GROQ_API_KEY` *(Opcional - Clave de Groq Console)*
@@ -65,7 +66,15 @@ Obtén tus credenciales gratuitas de los proveedores que desees usar y añádela
 *   `OPENROUTER_API_KEY` *(Opcional - Clave de OpenRouter)*
 *   `SAMBA_API_KEY` *(Opcional - Clave de SambaNova)*
 *   `CEREBRAS_API_KEY` *(Opcional - Clave de Cerebras)*
-*   `GH_MODELS_TOKEN` *(Opcional - Token de acceso personal de GitHub para GitHub Models, no puede empezar con GITHUB_)*
+*   `GH_MODELS_TOKEN` o `TOKEN_GH` *(Opcional - Token de acceso personal de GitHub para GitHub Models, no puede empezar con GITHUB_)*
+
+> [!TIP]
+> **Subida ultra-rápida de Secrets con GitHub CLI (`gh`):**
+> Para evitar la interfaz web, puedes subir tus claves en segundos desde tu terminal (asegúrate de estar en el directorio del repo):
+> ```bash
+> gh secret set TOKEN_GH -b "tu_token_aqui"
+> gh secret set ZENON_API_KEY -b "tu_clave_aqui"
+> ```
 
 ### 2. Crear la Carpeta de Workflows y Configurar el Archivo
 En el repositorio que quieres auditar, crea las carpetas `.github/workflows/` si no existen y añade el archivo `zenon.yml` con el siguiente contenido:
@@ -132,6 +141,7 @@ jobs:
           samba-api-key: ${{ secrets.SAMBA_API_KEY }}
           cerebras-api-key: ${{ secrets.CEREBRAS_API_KEY }}
           gh-models-token: ${{ secrets.GH_MODELS_TOKEN }}
+          token-gh: ${{ secrets.TOKEN_GH }}
           mode: ${{ github.event.inputs.mode || 'assist' }}
           objective-file: ${{ github.event.inputs.objective-file || 'zenon_objective.md' }}
 ```
@@ -214,6 +224,7 @@ Hemos creado dos scripts ligeros para automatizar la carga de variables del arch
 | `samba-api-key` | API Key para SambaNova. | No | — |
 | `cerebras-api-key` | API Key para Cerebras. | No | — |
 | `gh-models-token` | Token personal para GitHub Models (no debe empezar por GITHUB_). | No | — |
+| `token-gh` | Token alternativo (secret: TOKEN_GH) para GitHub Models. | No | — |
 | `mode` | Modo de ejecución: `assist`, `correct` u `objective`. | No | `assist` |
 | `objective-file` | Archivo Markdown de directivas para el modo `objective`. | No | `zenon_objective.md` |
 | `exclude` | Archivos/rutas separados por comas que se deben ignorar. | No | `""` |

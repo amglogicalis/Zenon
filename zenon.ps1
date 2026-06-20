@@ -18,6 +18,18 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $ZenonJs   = Join-Path $ScriptDir "zenon.js"
 
+# Verify if zenon.js exists. If not, the wrapper was likely copied without zenon.js.
+if (-not (Test-Path $ZenonJs)) {
+    Write-Host ""
+    Write-Host "❌ [zenon.ps1] Error: No se encontró 'zenon.js' en: $ZenonJs" -ForegroundColor Red
+    Write-Host "   Si has copiado 'zenon.ps1' a otro repositorio, ¡no es necesario!"
+    Write-Host "   Puedes ejecutar Zenon desde cualquier carpeta llamándolo por su ruta original:"
+    Write-Host "     C:\mis-proyectos\Zenon\zenon.ps1 --mode assist" -ForegroundColor Cyan
+    Write-Host "   O añadir la carpeta de Zenon ('C:\mis-proyectos\Zenon') a tu PATH de Windows."
+    Write-Host ""
+    exit 1
+}
+
 # Load a local .env file if it exists (for local API keys)
 $EnvFile = Join-Path $ScriptDir ".env"
 if (Test-Path $EnvFile) {
