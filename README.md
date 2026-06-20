@@ -365,6 +365,10 @@ Si deseas desactivar la ejecución automática de los flujos de **Zenon Reviewer
 
 Una vez creadas con valor `true`, los flujos se saltarán en pushes y PRs automáticos, pero **seguirás pudiendo ejecutarlos manualmente** desde la pestaña **Actions** → seleccionar el flujo → **Run workflow**.
 
+Al ejecutar los flujos manualmente desde la interfaz de GitHub:
+* **Zenon Reviewer**: Puedes escribir un rango de commits en `diff-range` (ej: `HEAD~1`). Si lo dejas vacío, revisará el último commit.
+* **Zenon Updater**: Puedes indicar qué archivos markdown auditar en `docs` (ej: `README.md`). Si lo dejas vacío, auditará todos los documentos del proyecto.
+
 Para **reactivar** la auto-ejecución, cambia el valor a `false` o elimina la variable directamente.
 
 ---
