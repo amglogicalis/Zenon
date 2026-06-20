@@ -28,7 +28,7 @@ graph TD
         direction TB
         SEL["🎯 selectModelsWithAI\nSelector Inteligente de Modelos"]
         FALL["🔄 callWithFallback\nCascada Multi-Proveedor"]
-        CACHE[("💾 .zenon_cache.json\nConocimiento & Estadísticas")]
+        CACHE(("💾 .zenon_cache.json\nConocimiento & Estadísticas"))
 
         SEL --> FALL
         FALL --> CACHE
