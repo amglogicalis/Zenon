@@ -39,18 +39,37 @@ while [ -h "$SOURCE" ]; do
   [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
 done
 SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
-ZENON_JS="$SCRIPT_DIR/src/zenon.js"
+SRC_DIR="$SCRIPT_DIR/src"
+ZENON_JS="$SRC_DIR/zenon.js"
+MODELS_JSON="$SRC_DIR/zenon_models.json"
 
-# Verify if zenon.js exists
+# Verify and download dependencies if missing
+if [ ! -d "$SRC_DIR" ]; then
+  mkdir -p "$SRC_DIR"
+fi
+
 if [ ! -f "$ZENON_JS" ]; then
-  echo "" >&2
-  echo -e "\033[0;31m❌ [zenon.sh] Error: 'zenon.js' not found at: $ZENON_JS\033[0m" >&2
-  echo "   If you copied 'zenon.sh' to this repository, that is not necessary." >&2
-  echo "   You can run Zenon from this directory by calling it directly at its original location:" >&2
-  echo -e "     \033[0;36m/path/to/Zenon/zenon.sh --mode assist\033[0m" >&2
-  echo "   Or add the Zenon directory to your PATH, or symlink the script." >&2
-  echo "" >&2
-  exit 1
+  echo -e "\033[0;33m[zenon.sh] 📥 Descargando 'zenon.js' desde el repositorio principal...\033[0m"
+  if command -v curl &> /dev/null; then
+    curl -fsSL -o "$ZENON_JS" "https://raw.githubusercontent.com/amglogicalis/Zenon/main/src/zenon.js"
+  elif command -v wget &> /dev/null; then
+    wget -q -O "$ZENON_JS" "https://raw.githubusercontent.com/amglogicalis/Zenon/main/src/zenon.js"
+  else
+    echo -e "\033[0;31m❌ Error: Se requiere curl o wget para descargar dependencias.\033[0m" >&2
+    exit 1
+  fi
+fi
+
+if [ ! -f "$MODELS_JSON" ]; then
+  echo -e "\033[0;33m[zenon.sh] 📥 Descargando 'zenon_models.json' desde el repositorio principal...\033[0m"
+  if command -v curl &> /dev/null; then
+    curl -fsSL -o "$MODELS_JSON" "https://raw.githubusercontent.com/amglogicalis/Zenon/main/src/zenon_models.json"
+  elif command -v wget &> /dev/null; then
+    wget -q -O "$MODELS_JSON" "https://raw.githubusercontent.com/amglogicalis/Zenon/main/src/zenon_models.json"
+  else
+    echo -e "\033[0;31m❌ Error: Se requiere curl o wget para descargar dependencias.\033[0m" >&2
+    exit 1
+  fi
 fi
 
 # Source a local .env file if it exists (for local API keys)

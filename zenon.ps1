@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 # Zenon AI Engine — CLI wrapper (Windows / PowerShell)
 # Usage:
 #   .\zenon.ps1                                      # default: assist mode
@@ -37,18 +37,25 @@ $ErrorActionPreference = "Stop"
 
 # Resolve the directory where this script lives (the repo root)
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$ZenonJs   = Join-Path $ScriptDir "src/zenon.js"
+$SrcDir    = Join-Path $ScriptDir "src"
+$ZenonJs   = Join-Path $SrcDir "zenon.js"
+$ModelsJson = Join-Path $SrcDir "zenon_models.json"
 
-# Verify if zenon.js exists. If not, the wrapper was likely copied without zenon.js.
+# Verify and download dependencies if missing
+if (-not (Test-Path $SrcDir)) {
+    New-Item -ItemType Directory -Path $SrcDir -Force | Out-Null
+}
+
 if (-not (Test-Path $ZenonJs)) {
-    Write-Host ""
-    Write-Host "❌ [zenon.ps1] Error: No se encontró 'zenon.js' en: $ZenonJs" -ForegroundColor Red
-    Write-Host "   Si has copiado 'zenon.ps1' a otro repositorio, ¡no es necesario!"
-    Write-Host "   Puedes ejecutar Zenon desde cualquier carpeta llamándolo por su ruta original:"
-    Write-Host "     C:\mis-proyectos\Zenon\zenon.ps1 --mode assist" -ForegroundColor Cyan
-    Write-Host "   O añadir la carpeta de Zenon ('C:\mis-proyectos\Zenon') a tu PATH de Windows."
-    Write-Host ""
-    exit 1
+    Write-Host "[zenon.ps1] 📥 Descargando 'zenon.js' desde el repositorio principal..." -ForegroundColor Yellow
+    $Uri = "https://raw.githubusercontent.com/amglogicalis/Zenon/main/src/zenon.js"
+    Invoke-WebRequest -Uri $Uri -OutFile $ZenonJs -UseBasicParsing
+}
+
+if (-not (Test-Path $ModelsJson)) {
+    Write-Host "[zenon.ps1] 📥 Descargando 'zenon_models.json' desde el repositorio principal..." -ForegroundColor Yellow
+    $Uri = "https://raw.githubusercontent.com/amglogicalis/Zenon/main/src/zenon_models.json"
+    Invoke-WebRequest -Uri $Uri -OutFile $ModelsJson -UseBasicParsing
 }
 
 # Load a local .env file if it exists (for local API keys)
