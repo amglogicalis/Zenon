@@ -61,7 +61,7 @@
       {
         "provider": "samba",
         "api_model_id": "gemma-4-31B-it",
-        "maxInputChars": 240000,
+        "maxInputChars": 30000,
         "tier": "medium"
       },
       {
@@ -84,7 +84,7 @@
       {
         "provider": "samba",
         "api_model_id": "gpt-oss-120b",
-        "maxInputChars": 240000,
+        "maxInputChars": 30000,
         "tier": "medium"
       },
       {
@@ -107,7 +107,7 @@
       {
         "provider": "samba",
         "api_model_id": "DeepSeek-V3.2",
-        "maxInputChars": 240000,
+        "maxInputChars": 30000,
         "tier": "medium"
       }
     ]
@@ -123,7 +123,7 @@
       {
         "provider": "samba",
         "api_model_id": "DeepSeek-V3-0324",
-        "maxInputChars": 240000,
+        "maxInputChars": 30000,
         "tier": "medium"
       }
     ]
@@ -139,7 +139,7 @@
       {
         "provider": "samba",
         "api_model_id": "MiniMax-M2.7",
-        "maxInputChars": 240000,
+        "maxInputChars": 30000,
         "tier": "medium"
       }
     ]
@@ -248,7 +248,7 @@
       {
         "provider": "samba",
         "api_model_id": "Meta-Llama-3.3-70B-Instruct",
-        "maxInputChars": 240000,
+        "maxInputChars": 30000,
         "tier": "medium"
       },
       {

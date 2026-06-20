@@ -104,11 +104,11 @@ const PROVIDERS = {
     keyName: 'SAMBA_API_KEY',
     rpmLimit: 4, // 4 RPM (min 15s spacing to prevent rate limit blocks on SambaNova free tier)
     models: [
-      { id: 'DeepSeek-V3.2',               maxInputChars: 240000 }, // 60K tokens (240K chars) to avoid TPM rate-limit
-      { id: 'gpt-oss-120b',                maxInputChars: 240000 }, // 60K tokens (240K chars)
-      { id: 'Meta-Llama-3.3-70B-Instruct', maxInputChars: 240000 }, // 60K tokens (240K chars)
-      { id: 'gemma-4-31B-it',              maxInputChars: 240000 }, // 60K tokens (240K chars)
-      { id: 'MiniMax-M2.7',                maxInputChars: 240000 }  // 60K tokens (240K chars)
+      { id: 'DeepSeek-V3.2',               maxInputChars: 30000 }, // 7.5K tokens (30K chars) to avoid free-tier payload rate limit
+      { id: 'gpt-oss-120b',                maxInputChars: 30000 }, // 7.5K tokens (30K chars)
+      { id: 'Meta-Llama-3.3-70B-Instruct', maxInputChars: 30000 }, // 7.5K tokens (30K chars)
+      { id: 'gemma-4-31B-it',              maxInputChars: 30000 }, // 7.5K tokens (30K chars)
+      { id: 'MiniMax-M2.7',                maxInputChars: 30000 }  // 7.5K tokens (30K chars)
     ]
   },
   cerebras: {
