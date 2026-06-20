@@ -10,6 +10,8 @@
 #   ./zenon.sh --mode trainer --topic "Ruby on Rails 7.0"
 #   ./zenon.sh --mode reviewer           # review local unstaged/staged git diff
 #   ./zenon.sh --mode reviewer --diff "HEAD~1" # review last commit
+#   ./zenon.sh --mode analyzer           # show consumption stats and quotas
+#   ./zenon.sh --mode analyzer --reset-stats # reset consumption statistics
 # =============================================================================
 set -euo pipefail
 

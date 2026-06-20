@@ -9,6 +9,8 @@
 #   .\zenon.ps1 --mode trainer --topic "Ruby on Rails 7.0"
 #   .\zenon.ps1 --mode reviewer                      # review local unstaged/staged git diff
 #   .\zenon.ps1 --mode reviewer --diff "HEAD~1"       # review last commit
+#   .\zenon.ps1 --mode analyzer                      # show consumption stats and quotas
+#   .\zenon.ps1 --mode analyzer --reset-stats        # reset consumption statistics
 # =============================================================================
 param(
     [Parameter(ValueFromRemainingArguments = $true)]

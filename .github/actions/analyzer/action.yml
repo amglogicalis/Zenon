@@ -1,0 +1,21 @@
+name: 'Zenon Analyzer'
+description: 'Analyze and report token consumption, API calls, and free-tier quotas for all Zenon actions.'
+author: 'amglogicalis'
+
+inputs:
+  reset:
+    description: 'Reset the accumulated statistics to zero (true/false)'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run Zenon Analyzer
+      shell: bash
+      run: |
+        ARGS=("--mode" "analyzer")
+        if [ "${{ inputs.reset }}" = "true" ]; then
+          ARGS+=("--reset-stats")
+        fi
+        node "${{ github.action_path }}/../../../zenon.js" "${ARGS[@]}"

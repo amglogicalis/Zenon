@@ -540,9 +540,62 @@ function parseArgs() {
       args.topic = process.argv[++i];
     } else if ((arg === '--diff' || arg === '-d') && i + 1 < process.argv.length) {
       args.diffRange = process.argv[++i];
+    } else if (arg === '--reset-stats') {
+      args.resetStats = true;
     }
   }
   return args;
+}
+
+// Helper to update cumulative token usage and call statistics in .zenon_cache.json
+function updateUsageStats(provider, model, mode, promptTokens, completionTokens) {
+  if (!fs.existsSync(CACHE_FILE)) return;
+  try {
+    let cacheData = { fingerprint: '', knowledge: '', updatedAt: '' };
+    try {
+      cacheData = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+    } catch (e) {}
+
+    if (!cacheData.usageStats) {
+      cacheData.usageStats = {
+        lastReset: new Date().toISOString(),
+        totalCalls: 0,
+        providers: {},
+        modes: {}
+      };
+    }
+
+    const stats = cacheData.usageStats;
+    stats.totalCalls = (stats.totalCalls || 0) + 1;
+
+    // Normalize prompt and completion tokens (make sure they are numbers)
+    const pTokens = Number(promptTokens) || 0;
+    const cTokens = Number(completionTokens) || 0;
+
+    // Update provider statistics
+    if (!stats.providers[provider]) {
+      stats.providers[provider] = { calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    }
+    const p = stats.providers[provider];
+    p.calls += 1;
+    p.promptTokens += pTokens;
+    p.completionTokens += cTokens;
+    p.totalTokens += (pTokens + cTokens);
+
+    // Update mode statistics
+    if (!stats.modes[mode]) {
+      stats.modes[mode] = { calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    }
+    const m = stats.modes[mode];
+    m.calls += 1;
+    m.promptTokens += pTokens;
+    m.completionTokens += cTokens;
+    m.totalTokens += (pTokens + cTokens);
+
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(cacheData, null, 2), 'utf8');
+  } catch (err) {
+    // Fail silently during regular model execution so we do not disrupt work
+  }
 }
 
 // Recursively traverse directory if not a Git repository
@@ -715,6 +768,11 @@ async function callGeminiModel(apiKey, model, mode, systemInstruction, prompt, e
   }
 
   const data = await response.json();
+
+  if (data.usageMetadata) {
+    updateUsageStats('gemini', model, mode, data.usageMetadata.promptTokenCount, data.usageMetadata.candidatesTokenCount);
+  }
+
   if (!data.candidates || data.candidates.length === 0) {
     throw new Error('No response candidates returned. The request may have been blocked by safety filters.');
   }
@@ -947,6 +1005,9 @@ async function callProviderModel(entry, mode, systemInstruction, prompt, enableG
     }
 
     const data = await response.json();
+    if (data.meta && data.meta.tokens) {
+      updateUsageStats('cohere', model, mode, data.meta.tokens.input_tokens, data.meta.tokens.output_tokens);
+    }
     if (data.message && data.message.content !== undefined && data.message.content !== null) {
       const extracted = extractTextFromContent(data.message.content);
       if (extracted) {
@@ -1011,6 +1072,9 @@ async function callProviderModel(entry, mode, systemInstruction, prompt, enableG
   }
 
   const data = await response.json();
+  if (data.usage) {
+    updateUsageStats(provider, model, mode, data.usage.prompt_tokens, data.usage.completion_tokens);
+  }
   if (!data.choices || data.choices.length === 0) {
     throw new Error(`${provider.toUpperCase()} returned no choices in response.`);
   }
@@ -1305,7 +1369,7 @@ async function main() {
   console.log('=====================');
 
   const hasAtLeastOneKey = Object.values(keys).some(Boolean);
-  if (!hasAtLeastOneKey) {
+  if (!hasAtLeastOneKey && mode !== 'analyzer') {
     console.error('');
     console.error('❌ Ninguna API Key de proveedor está configurada.');
     console.error('   Configura al menos una de las siguientes variables de entorno:');
@@ -1313,9 +1377,153 @@ async function main() {
     process.exit(1);
   }
 
-  if (!['assist', 'correct', 'objective', 'trainer', 'reviewer'].includes(mode)) {
-    console.error(`❌ Modo "${mode}" no reconocido. Modos disponibles: "assist", "correct", "objective", "trainer", "reviewer".`);
+  if (!['assist', 'correct', 'objective', 'trainer', 'reviewer', 'analyzer'].includes(mode)) {
+    console.error(`❌ Modo "${mode}" no reconocido. Modos disponibles: "assist", "correct", "objective", "trainer", "reviewer", "analyzer".`);
     process.exit(1);
+  }
+
+  // =============================================================================
+  // PASO 10: Modo Analyzer — Estadísticas de consumo y cuotas
+  // =============================================================================
+  if (mode === 'analyzer') {
+    const QUOTA_LIMITS = {
+      providers: {
+        gemini: { limitName: 'Free Tier Daily Limit', limitValue: 1500, limitUnit: 'calls/day' },
+        groq: { limitName: 'Free Tier Daily Limit', limitValue: 14400, limitUnit: 'calls/day' },
+        cohere: { limitName: 'Trial Key Monthly Limit', limitValue: 1000, limitUnit: 'calls/month' },
+        samba: { limitName: 'Daily Limit', limitValue: 10000, limitUnit: 'calls/day' },
+        cerebras: { limitName: 'Daily Limit', limitValue: 10000, limitUnit: 'calls/day' },
+        openrouter: { limitName: 'Free Tier Limit', limitValue: 1000, limitUnit: 'calls/day' },
+        github_models: { limitName: 'Daily Rate Limit', limitValue: 50, limitUnit: 'calls/day' }
+      }
+    };
+
+    const isReset = cliArgs.resetStats || process.env.INPUT_RESET_STATS === 'true';
+
+    if (isReset) {
+      if (fs.existsSync(CACHE_FILE)) {
+        try {
+          const cacheData = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+          cacheData.usageStats = {
+            lastReset: new Date().toISOString(),
+            totalCalls: 0,
+            providers: {},
+            modes: {}
+          };
+          fs.writeFileSync(CACHE_FILE, JSON.stringify(cacheData, null, 2), 'utf8');
+          console.log('🔄 Estadísticas de uso reseteadas correctamente en .zenon_cache.json.');
+          if (isCI && process.env.GITHUB_STEP_SUMMARY) {
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### 🔄 Zenon Polis — Analyzer\n\nEstadísticas de uso reseteadas correctamente.\n`);
+          }
+        } catch (e) {
+          console.error('❌ Error al resetear estadísticas:', e.message);
+          process.exit(1);
+        }
+      } else {
+        console.log('ℹ️ No existe archivo de caché para resetear.');
+      }
+      return;
+    }
+
+    let stats = {
+      lastReset: new Date().toISOString(),
+      totalCalls: 0,
+      providers: {},
+      modes: {}
+    };
+
+    if (fs.existsSync(CACHE_FILE)) {
+      try {
+        const cacheData = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+        if (cacheData.usageStats) {
+          stats = cacheData.usageStats;
+        }
+      } catch (e) {
+        console.warn('⚠️ No se pudo leer la caché para compilar estadísticas.');
+      }
+    }
+
+    stats.totalCalls = stats.totalCalls || 0;
+    stats.providers = stats.providers || {};
+    stats.modes = stats.modes || {};
+
+    let report = `### <img src="https://raw.githubusercontent.com/amglogicalis/Zenon/main/logo_polis_zenon.png" height="24" align="absmiddle" /> Zenon Polis — Analyzer\n\n`;
+    report += `#### <img src="https://raw.githubusercontent.com/amglogicalis/Zenon/main/logo_zenon_analyzer.png" height="20" align="absmiddle" /> Análisis de Consumo y Estadísticas\n\n`;
+    report += `* **Último reinicio**: ${stats.lastReset ? new Date(stats.lastReset).toLocaleString() : 'N/A'}\n`;
+    report += `* **Total de llamadas exitosas**: ${stats.totalCalls}\n\n`;
+
+    report += `### 🔌 Consumo por Proveedor de IA\n\n`;
+    report += `| Proveedor | Llamadas | % del Total | Tokens Prompt | Tokens Completion | Tokens Totales | Cuota Estimada | % Cuota Consumida |\n`;
+    report += `| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n`;
+
+    const providerEntries = Object.entries(stats.providers);
+    if (providerEntries.length === 0) {
+      report += `| *Sin datos* | 0 | 0% | 0 | 0 | 0 | - | 0% |\n`;
+    } else {
+      for (const [prov, provStats] of providerEntries) {
+        const calls = provStats.calls || 0;
+        const pct = stats.totalCalls > 0 ? ((calls / stats.totalCalls) * 100).toFixed(1) + '%' : '0%';
+        const pTokens = provStats.promptTokens || 0;
+        const cTokens = provStats.completionTokens || 0;
+        const tTokens = provStats.totalTokens || 0;
+
+        const quotaInfo = QUOTA_LIMITS.providers[prov] || { limitName: 'Sin límite', limitValue: null, limitUnit: '' };
+        let quotaLabel = '-';
+        let quotaPct = '0%';
+        if (quotaInfo.limitValue) {
+          quotaLabel = `${quotaInfo.limitValue} ${quotaInfo.limitUnit}`;
+          quotaPct = ((calls / quotaInfo.limitValue) * 100).toFixed(2) + '%';
+        }
+
+        report += `| **${prov.toUpperCase()}** | ${calls} | ${pct} | ${pTokens.toLocaleString()} | ${cTokens.toLocaleString()} | ${tTokens.toLocaleString()} | ${quotaLabel} | \`${quotaPct}\` |\n`;
+      }
+    }
+    report += `\n`;
+
+    report += `### ⚙️ Consumo por Modo de Ejecución\n\n`;
+    report += `| Modo | Llamadas | % del Total | Tokens Prompt | Tokens Completion | Tokens Totales |\n`;
+    report += `| :--- | :---: | :---: | :---: | :---: | :---: |\n`;
+
+    const modeEntries = Object.entries(stats.modes);
+    if (modeEntries.length === 0) {
+      report += `| *Sin datos* | 0 | 0% | 0 | 0 | 0 |\n`;
+    } else {
+      for (const [m, mStats] of modeEntries) {
+        const calls = mStats.calls || 0;
+        const pct = stats.totalCalls > 0 ? ((calls / stats.totalCalls) * 100).toFixed(1) + '%' : '0%';
+        const pTokens = mStats.promptTokens || 0;
+        const cTokens = mStats.completionTokens || 0;
+        const tTokens = mStats.totalTokens || 0;
+
+        report += `| \`${m}\` | ${calls} | ${pct} | ${pTokens.toLocaleString()} | ${cTokens.toLocaleString()} | ${tTokens.toLocaleString()} |\n`;
+      }
+    }
+    report += `\n`;
+
+    if (providerEntries.length > 0) {
+      report += `### 📊 Distribución de Llamadas por Proveedor\n\n`;
+      report += `\`\`\`mermaid\npie title Llamadas por Proveedor\n`;
+      for (const [prov, provStats] of providerEntries) {
+        report += `    "${prov.toUpperCase()}" : ${provStats.calls || 0}\n`;
+      }
+      report += `\`\`\`\n\n`;
+    }
+
+    if (isCI) {
+      if (process.env.GITHUB_STEP_SUMMARY) {
+        fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, report);
+      }
+    } else {
+      let localReport = report
+        .replace(/https:\/\/raw\.githubusercontent\.com\/amglogicalis\/Zenon\/main\//g, '')
+        .replace(/### <img src="logo_polis_zenon.png"[^>]*> /, '# ')
+        .replace(/#### <img src="logo_zenon_analyzer.png"[^>]*> /, '## ');
+
+      fs.writeFileSync('zenon_report.md', localReport, 'utf8');
+      console.log(localReport);
+      console.log('\n✅ Reporte de análisis guardado en zenon_report.md');
+    }
+    return;
   }
 
   // =============================================================================

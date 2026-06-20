@@ -32,7 +32,7 @@
 
 ## 🛠️ Modos de Operación
 
-Zenon puede trabajar de tres formas distintas según lo que necesites en cada flujo de desarrollo:
+Zenon puede trabajar de varias formas distintas según lo que necesites en cada flujo de desarrollo:
 
 ### 1. Modo `assist` (Auditoría y Reporte)
 Analiza todo el repositorio y genera una auditoría completa cubriendo bugs latentes, vulnerabilidades de seguridad, cuellos de botella de rendimiento y legibilidad.
@@ -46,6 +46,15 @@ Identifica fallos evidentes de sintaxis, errores lógicos y problemas de segurid
 ### 3. Modo `objective` (Desarrollo por Objetivos)
 Lee un archivo markdown que describe un objetivo de desarrollo técnico específico (por defecto `zenon_objective.md`) y realiza todas las modificaciones necesarias en el código para cumplirlo.
 *   **En GitHub Actions:** Aplica las correcciones a los archivos, realiza commit/push y crea un resumen de cambios.
+
+### 4. Modo `trainer` (Entrenamiento de Conocimiento)
+Investiga sobre un tema o tecnología específica (pasada por consola o mediante un archivo `zenon_training.md`) utilizando **Google Search Grounding** para obtener la documentación y mejores prácticas actuales, guardándola de forma incremental en el perfil de conocimiento `.zenon_cache.json` del repositorio.
+
+### 5. Modo `reviewer` (Revisión de Código Automática)
+Extrae el `git diff` de los cambios en local o de una Pull Request en CI y realiza una revisión técnica exhaustiva basada únicamente en los cambios introducidos y el perfil de conocimiento autoentrenado del repositorio, publicando un reporte visual de fallos y recomendaciones.
+
+### 6. Modo `analyzer` (Análisis de Consumo y Cuotas)
+Compila y visualiza estadísticas de consumo acumulado de tokens (Prompt, Completion, Total) y número de llamadas exitosas de todos los proveedores y modelos utilizados en la caché. Compara el uso con las estimaciones de cuota gratuita para controlar costes. Admite `--reset-stats` para poner los contadores a cero.
 
 > [!IMPORTANT]
 > **Recomendación para el Modo `objective`:**
@@ -231,7 +240,7 @@ Hemos creado dos scripts ligeros para automatizar la carga de variables del arch
 | `cerebras-api-key` | API Key para Cerebras. | No | — |
 | `gh-models-token` | Token personal para GitHub Models (no debe empezar por GITHUB_). | No | — |
 | `token-gh` | Token alternativo (secret: TOKEN_GH) para GitHub Models. | No | — |
-| `mode` | Modo de ejecución: `assist`, `correct`, `objective` o `trainer`. | No | `assist` |
+| `mode` | Modo de ejecución: `assist`, `correct`, `objective`, `trainer`, `reviewer` o `analyzer`. | No | `assist` |
 | `objective-file` | Archivo/Ruta de directivas para el modo `objective` (si el archivo no existe, el valor se interpretará directamente como el texto del objetivo). | No | `zenon_objective.md` |
 | `objective` | Texto directo del objetivo a implementar en modo `objective` (tiene precedencia sobre `objective-file`). | No | — |
 | `exclude` | Archivos/rutas separados por comas que se deben ignorar. | No | `""` |

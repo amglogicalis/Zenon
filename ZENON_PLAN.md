@@ -2,7 +2,7 @@
 
 Documento de referencia para el desarrollo incremental de Zenon. Cada paso se implementa sobre el anterior sin romper la funcionalidad existente.
 
-> **Estado actual**: ¡Pasos 1, 2, 3, 4, 5 y 6 completados con éxito! Paso 7 en planificación.
+> **Estado actual**: ¡Pasos 1, 2, 3, 4, 5, 6 y 7 completados con éxito! Paso 8 en planificación.
 
 ---
 
@@ -45,7 +45,7 @@ Documento de referencia para el desarrollo incremental de Zenon. Cada paso se im
 - Investigar el proveedor/es finalmente seleccionado/s para que las llamadas a la api, los prompts y demas funcionen perfecto, realizando una investigacion profunda y exhaustiva sobre como llamar a la api corerctamente de estos modelos nuevos y tener en cuenta sus restricciones y limites de prompt
 
 
-## Paso 7: Refinamiento -- PLANIFICADO (Preguntas y cambios a hacer)
+## Paso 7: Refinamiento -- COMPLETADO ✅
 
 *No olvides ir actualizando el readme si es necesario con los nuevos cambios que se vayan haciendo*
 
@@ -100,9 +100,9 @@ Personalizar zenon para que haga varios automatismos interesantes, configurables
 Funciones chulas nuevas a añadir, ****en todas intentar añadir el logo en alguna parte, y el nuevo logo ded cada action junto con el logo de zenon polis, a esto proponme tu, hay un logo creado para zenon, zenon polis y cada zenon action***
 Estas son las actions nuevas a añadir (ordenadas de mas simples a menos, la mayoria por no decir todas tiraran de la IA principal):
 
-- 1. Zenon trainer: esta action servira para mandarle a zenon lo que quieres que aprenda (aprende lenguaje ruby version X.X.X, aprende sobre uso avanzado de terradorm, aprende la logica de pipelines red hat para noseque...), zenon buscara sobre eso y lo aprendera guardandolo en la cache.
+- 1. Zenon trainer: esta action servira para mandarle a zenon lo que quieres que aprenda (aprende lenguaje ruby version X.X.X, aprende sobre uso avanzado de terradorm, aprende la logica de pipelines red hat para noseque...), zenon buscara sobre eso y lo aprendera guardandolo en la cache. - COMPLETADO ✅
 
-- 2. Zenon reviewer: esta action automaticamente se ejecuta cuando se hace un push/commit, este action analiza los cambios hechos, y hace un informe/resumen. Tambien habiendo analizado los cambios hechos, detectara errores de logica, sintaxis o malas practicas y las mencionara.
+- 2. Zenon reviewer: esta action automaticamente se ejecuta cuando se hace un push/commit, este action analiza los cambios hechos, y hace un informe/resumen. Tambien habiendo analizado los cambios hechos, detectara errores de logica, sintaxis o malas practicas y las mencionara.- COMPLETADO ✅
 
 - 3. Zenon analyzer: esta action mostrara estadisiticas actuales de los tokens, consumos, porcentaje de uso, cuanto queda en el tier, etc, de los distintos modelos de IA que se usan y sus providers. asi se hace un seguimmiento de costes y rendimiento.
 
@@ -118,3 +118,7 @@ Tras añadir las nuevas funciones de zenon no olvides ir actualizando el readme,
 Ademas como ves muchas de las propias action podrian aprovechar y llamarse a otras para sus funciones...
 
 - Tras esto, habra que pensar como crear un script o algo, para llevarse todas las actions de una a un repo.
+
+Paso 9: Organizacion y estructura organizada de directorios y archivos -- PLANIFICADO
+Esto es una tarea simple, sera organizar los distintos contenidos del repositorio en carpetas por archivos para mas organizacion visual, y actualizar las referencias a estos archivos ya que cambiaran de lugar. (recomendado ir archivo por archivo viendo donde se les declara para saberlo)
+Tras eso asegurarse que el readme.md esta al dia y ya estaria el proyecto terminado. A partir de aqui seran bugfixes que vayan ocurriendo y updates con mejoras

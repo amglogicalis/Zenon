@@ -1,0 +1,41 @@
+name: Zenon Analyzer
+
+on:
+  workflow_dispatch:
+    inputs:
+      reset:
+        description: 'Reset the accumulated statistics to zero (true/false)'
+        required: false
+        default: 'false'
+  schedule:
+    # Runs every Sunday at midnight
+    - cron: '0 0 * * 0'
+
+jobs:
+  analyze:
+    name: Run Zenon Analyzer
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Restore cache to get cumulative statistics and codebase knowledge
+      - name: Restore Zenon Knowledge Cache
+        uses: actions/cache@v4
+        with:
+          path: .zenon_cache.json
+          key: zenon-knowledge-cache-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            zenon-knowledge-cache-${{ github.ref_name }}-
+            zenon-knowledge-cache-
+
+      - name: Run Zenon Analyzer Action
+        uses: ./.github/actions/analyzer
+        with:
+          reset: ${{ github.event.inputs.reset || 'false' }}
