@@ -45,3 +45,4 @@ jobs:
           cerebras-api-key: ${{ secrets.CEREBRAS_API_KEY }}
           gh-models-token: ${{ secrets.GH_MODELS_TOKEN }}
           token-gh: ${{ secrets.TOKEN_GH }}
+          tenzor-api-key: ${{ secrets.TENZOR_API_KEY }}

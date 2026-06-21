@@ -136,6 +136,17 @@ const PROVIDERS = {
       { id: 'gpt-4o-mini',                  maxInputChars:  28000 }, // strict 8k tokens free tier limit (28K chars)
       { id: 'Meta-Llama-3.1-8B-Instruct',  maxInputChars:  28000 }  // Llama 8B (strict 8k tokens free tier limit)
     ]
+  },
+  // ===========================================================================
+  // Tenzor AI — OpenAI-compatible API (llama-3.3-70b-versatile + gemini-2.5-pro cascade)
+  // ===========================================================================
+  tenzor: {
+    keyName: 'TENZOR_API_KEY',
+    rpmLimit: 30, // No RPM limit on Tenzor itself; conservative 30 RPM matching underlying Groq llama-3.3 limit
+    models: [
+      { id: 'llama-3.3-70b-versatile', maxInputChars: 400000 }, // 128K tokens — Groq backend (primary)
+      { id: 'qwen/qwen3.6-27b',        maxInputChars: 400000 }  // 131K tokens — Groq backend (fallback inside Tenzor)
+    ]
   }
 };
 
@@ -154,7 +165,8 @@ function getAvailableKeys(cliArgs) {
     openrouter:    cliArgs.openrouterApiKey  || process.env.INPUT_OPENROUTER_API_KEY  || process.env.OPENROUTER_API_KEY,
     samba:         cliArgs.sambaApiKey       || process.env.INPUT_SAMBA_API_KEY       || process.env.SAMBA_API_KEY,
     cerebras:      cliArgs.cerebrasApiKey    || process.env.INPUT_CEREBRAS_API_KEY    || process.env.CEREBRAS_API_KEY,
-    github_models: cliArgs.ghModelsToken     || cliArgs.githubModelsToken             || process.env.INPUT_TOKEN_GH || process.env.TOKEN_GH || process.env.INPUT_GH_MODELS_TOKEN || process.env.GH_MODELS_TOKEN || process.env.INPUT_GITHUB_MODELS_TOKEN || process.env.GITHUB_MODELS_TOKEN
+    github_models: cliArgs.ghModelsToken     || cliArgs.githubModelsToken             || process.env.INPUT_TOKEN_GH || process.env.TOKEN_GH || process.env.INPUT_GH_MODELS_TOKEN || process.env.GH_MODELS_TOKEN || process.env.INPUT_GITHUB_MODELS_TOKEN || process.env.GITHUB_MODELS_TOKEN,
+    tenzor:        cliArgs.tenzorApiKey      || process.env.INPUT_TENZOR_API_KEY      || process.env.TENZOR_API_KEY
   };
 }
 
@@ -266,6 +278,8 @@ function buildDefaultChain(keys) {
   addModel('gemini',        getAt('gemini', 3));        // gemma-4-31b-it
   addModel('samba',         getAt('samba', 3));         // gemma-4-31B-it (samba)
   addModel('samba',         getAt('samba', 4));         // MiniMax-M2.7
+  addModel('tenzor',        getAt('tenzor', 0));        // llama-3.3-70b-versatile via Tenzor
+  addModel('tenzor',        getAt('tenzor', 1));        // qwen/qwen3.6-27b via Tenzor
 
   // Deduplicar manteniendo orden de prioridad
   const seen = new Set();
@@ -1119,6 +1133,8 @@ async function callProviderModel(entry, mode, systemInstruction, prompt, enableG
     apiBase = 'https://api.cerebras.ai/v1';
   } else if (provider === 'github_models') {
     apiBase = 'https://models.inference.ai.azure.com';
+  } else if (provider === 'tenzor') {
+    apiBase = process.env.TENZOR_BASE_URL || process.env.INPUT_TENZOR_BASE_URL || 'https://tenzor.onrender.com/v1';
   }
 
   const url = `${apiBase}/chat/completions`;
@@ -1556,7 +1572,8 @@ async function main() {
         samba: { limitName: 'Daily Limit', limitValue: 10000, limitUnit: 'calls/day' },
         cerebras: { limitName: 'Daily Limit', limitValue: 10000, limitUnit: 'calls/day' },
         openrouter: { limitName: 'Free Tier Limit', limitValue: 1000, limitUnit: 'calls/day' },
-        github_models: { limitName: 'Daily Rate Limit', limitValue: 50, limitUnit: 'calls/day' }
+        github_models: { limitName: 'Daily Rate Limit', limitValue: 50, limitUnit: 'calls/day' },
+        tenzor: { limitName: 'Daily Rate Limit', limitValue: 1000, limitUnit: 'calls/day' }
       }
     };
 

@@ -38,6 +38,10 @@ inputs:
     description: 'Alternative GitHub Models Token (optional)'
     required: false
     default: ''
+  tenzor-api-key:
+    description: 'Tenzor AI API Key (optional)'
+    required: false
+    default: ''
   devops-plan-file:
     description: 'Path (relative to repo root) to the DevOpser plan file (default: zenon_devops.md)'
     required: false
@@ -97,6 +101,7 @@ runs:
         INPUT_CEREBRAS_API_KEY: ${{ inputs.cerebras-api-key }}
         INPUT_GH_MODELS_TOKEN: ${{ inputs.gh-models-token }}
         INPUT_TOKEN_GH: ${{ inputs.token-gh }}
+        INPUT_TENZOR_API_KEY: ${{ inputs.tenzor-api-key }}
         INPUT_MODE: devops
         INPUT_DEVOPS_PLAN_FILE: ${{ inputs.devops-plan-file }}
         INPUT_DEVOPS_TASK: ${{ inputs.devops-task }}

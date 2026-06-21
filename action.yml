@@ -38,6 +38,14 @@ inputs:
     description: 'Alternative Token for GitHub Models API (TOKEN_GH) (optional - configure as a repository secret)'
     required: false
     default: ''
+  tenzor-api-key:
+    description: 'Tenzor AI API Key (optional - configure as a repository secret)'
+    required: false
+    default: ''
+  tenzor-base-url:
+    description: 'Tenzor AI base URL (optional - defaults to https://tenzor.onrender.com/v1)'
+    required: false
+    default: ''
   mode:
     description: 'Operating mode: "assist", "correct", "objective", "trainer", "updater", "tester", "devops"'
     required: false
@@ -109,6 +117,7 @@ runs:
         echo "Samba Key    : $([ -n "$INPUT_SAMBA_API_KEY" ] && echo 'set ✅' || echo 'not set ❌')"
         echo "Cerebras Key : $([ -n "$INPUT_CEREBRAS_API_KEY" ] && echo 'set ✅' || echo 'not set ❌')"
         echo "GitHubModels : $([ -n "$INPUT_GH_MODELS_TOKEN" -o -n "$INPUT_TOKEN_GH" -o -n "$TOKEN_GH" ] && echo 'set ✅' || echo 'not set ❌')"
+        echo "Tenzor Key   : $([ -n "$INPUT_TENZOR_API_KEY" ] && echo 'set ✅' || echo 'not set ❌')"
         if [ "$INPUT_MODE" = "objective" ]; then
           if [ -n "$INPUT_OBJECTIVE" ]; then
             echo "Objective    : Text ($INPUT_OBJECTIVE)"
@@ -136,6 +145,7 @@ runs:
         INPUT_CEREBRAS_API_KEY: ${{ inputs.cerebras-api-key }}
         INPUT_GH_MODELS_TOKEN: ${{ inputs.gh-models-token }}
         INPUT_TOKEN_GH: ${{ inputs.token-gh }}
+        INPUT_TENZOR_API_KEY: ${{ inputs.tenzor-api-key }}
         INPUT_MODE: ${{ inputs.mode }}
         INPUT_TOPIC: ${{ inputs.topic }}
         INPUT_OBJECTIVE: ${{ inputs.objective }}
@@ -154,6 +164,8 @@ runs:
         INPUT_CEREBRAS_API_KEY: ${{ inputs.cerebras-api-key }}
         INPUT_GH_MODELS_TOKEN: ${{ inputs.gh-models-token }}
         INPUT_TOKEN_GH: ${{ inputs.token-gh }}
+        INPUT_TENZOR_API_KEY: ${{ inputs.tenzor-api-key }}
+        TENZOR_BASE_URL: ${{ inputs.tenzor-base-url }}
         INPUT_MODE: ${{ inputs.mode }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         INPUT_EXCLUDE: ${{ inputs.exclude }}

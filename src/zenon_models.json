@@ -486,5 +486,38 @@
         "tier": "medium"
       }
     ]
+  },
+  {
+    "model_id": "tenzor-llama-3.3",
+    "description": "Tenzor AI — Llama 3.3 70B via Tenzor, specialized in programming and DevOps, with internal Gemini fallback.",
+    "specialization": [
+      "code",
+      "reasoning",
+      "general"
+    ],
+    "providers": [
+      {
+        "provider": "tenzor",
+        "api_model_id": "llama-3.3-70b-versatile",
+        "maxInputChars": 400000,
+        "tier": "medium"
+      }
+    ]
+  },
+  {
+    "model_id": "tenzor-qwen3",
+    "description": "Tenzor AI — Qwen 3.6 27B via Tenzor, strong for code generation and analysis.",
+    "specialization": [
+      "code",
+      "general"
+    ],
+    "providers": [
+      {
+        "provider": "tenzor",
+        "api_model_id": "qwen/qwen3.6-27b",
+        "maxInputChars": 400000,
+        "tier": "medium"
+      }
+    ]
   }
 ]
