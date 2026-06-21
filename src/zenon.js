@@ -1966,12 +1966,15 @@ Return the learned project knowledge profile now.`;
       const trainingResult = await callWithFallback(chain, 'assist', trainingSystemInstruction, trainingUserPrompt, true);
       cachedKnowledge = trainingResult.text;
       
-      // Guardar en caché
-      fs.writeFileSync(CACHE_FILE, JSON.stringify({
-        fingerprint: fingerprint,
-        knowledge: cachedKnowledge,
-        updatedAt: new Date().toISOString()
-      }, null, 2), 'utf8');
+      // Guardar en caché preservando usageStats
+      let cacheData = {};
+      if (fs.existsSync(CACHE_FILE)) {
+        try { cacheData = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')); } catch (e) {}
+      }
+      cacheData.fingerprint = fingerprint;
+      cacheData.knowledge = cachedKnowledge;
+      cacheData.updatedAt = new Date().toISOString();
+      fs.writeFileSync(CACHE_FILE, JSON.stringify(cacheData, null, 2), 'utf8');
       
       console.log(`✅ Autoentrenamiento completado con éxito utilizando la IA: [${trainingResult.provider.toUpperCase()}] ${trainingResult.model}. Guardado en .zenon_cache.json`);
     } catch (err) {
@@ -2023,12 +2026,10 @@ Return the structured, professional technical profile now.`;
         try { cacheData = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')); } catch (e) {}
       }
 
-      // Write updated cache
-      fs.writeFileSync(CACHE_FILE, JSON.stringify({
-        fingerprint: cacheData.fingerprint || '',
-        knowledge: updatedKnowledge,
-        updatedAt: new Date().toISOString()
-      }, null, 2), 'utf8');
+      // Write updated cache preserving usageStats
+      cacheData.knowledge = updatedKnowledge;
+      cacheData.updatedAt = new Date().toISOString();
+      fs.writeFileSync(CACHE_FILE, JSON.stringify(cacheData, null, 2), 'utf8');
 
       console.log(`✅ Entrenamiento completado con éxito utilizando la IA: [${trainingResult.provider.toUpperCase()}] ${trainingResult.model}`);
 
