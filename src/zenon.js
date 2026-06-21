@@ -1196,7 +1196,7 @@ function isLoopingResponse(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   if (lines.length < 5) return false;
 
-  // 1. Detección de repetición de líneas exactas (como antes)
+  // 1. Detección de repetición de líneas exactas
   const freq = {};
   for (const line of lines) { freq[line] = (freq[line] || 0) + 1; }
   const maxFreq = Math.max(...Object.values(freq));
@@ -1204,9 +1204,23 @@ function isLoopingResponse(text) {
     return true; // Bucle de líneas exactas
   }
 
+  // 1b. Detección de repetición de líneas normalizando números para evitar bucles que incrementan ids o líneas
+  const freqNorm = {};
+  for (const line of lines) {
+    const normalized = line.replace(/\d+/g, '').replace(/\s+/g, ' ').trim();
+    if (normalized.length > 25) { // Evitar falsos positivos con cabeceras o estructuras cortas
+      freqNorm[normalized] = (freqNorm[normalized] || 0) + 1;
+    }
+  }
+  const normFrequencies = Object.values(freqNorm);
+  if (normFrequencies.length > 0) {
+    const maxNormFreq = Math.max(...normFrequencies);
+    if (maxNormFreq > 5 && (maxNormFreq / lines.length) > 0.35) {
+      return true; // Bucle de líneas repetitivas ignorando números
+    }
+  }
+
   // 2. Detección de patrones repetitivos en estructuras Markdown (ej. tablas)
-  // Simplificación: si encontramos un patrón de líneas que se repiten en bloques
-  // y cubren una parte significativa del texto, es un bucle estructural.
   for (let i = 0; i < lines.length - 2; i++) {
     const block = lines.slice(i, i + 3).join('\n'); // Bloque de 3 líneas
     let count = 0;
