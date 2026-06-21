@@ -1094,8 +1094,9 @@ async function callProviderModel(entry, mode, systemInstruction, prompt, enableG
     }
 
     const data = await response.json();
-    if (data.meta && data.meta.tokens) {
-      updateUsageStats('cohere', model, mode, data.meta.tokens.input_tokens, data.meta.tokens.output_tokens);
+    if (data.usage) {
+      const tokens = data.usage.tokens || data.usage.billed_units || {};
+      updateUsageStats('cohere', model, mode, tokens.input_tokens, tokens.output_tokens);
     }
     if (data.message && data.message.content !== undefined && data.message.content !== null) {
       const extracted = extractTextFromContent(data.message.content);
