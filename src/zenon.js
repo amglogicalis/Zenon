@@ -58,12 +58,19 @@ const PROVIDERS = {
   gemini: {
     keyName: 'ZENON_API_KEY',
     alternateKeyName: 'GEMINI_API_KEY',
-    rpmLimit: 15, // 15 RPM (min 4s spacing)
+    rpmLimit: 15, // 15 RPM default base
     models: [
-      { id: 'gemini-2.5-flash',        maxInputChars: 4000000 }, // 1M tokens (4M chars)
-      { id: 'gemini-flash-lite-latest', maxInputChars: 4000000 }, // 1M tokens (4M chars)
-      { id: 'gemini-3.1-flash-lite',   maxInputChars: 4000000 }, // 1M tokens (4M chars)
-      { id: 'gemma-4-31b-it',          maxInputChars: 1000000 }  // 256K tokens (1M chars)
+      { id: 'gemini-2.5-flash',                  maxInputChars: 4000000, rpmLimit: 15 }, 
+      { id: 'gemini-2.5-pro',                    maxInputChars: 4000000, rpmLimit: 5 },  
+      { id: 'gemini-3.1-pro-preview',            maxInputChars: 4000000, rpmLimit: 10 }, 
+      { id: 'gemini-3.5-flash',                  maxInputChars: 4000000, rpmLimit: 15 }, 
+      { id: 'gemini-2.5-flash-lite',             maxInputChars: 4000000, rpmLimit: 15 }, 
+      { id: 'deep-research-pro-preview-12-2025', maxInputChars: 4000000, rpmLimit: 2 },  
+      { id: 'deep-research-preview-04-2026',     maxInputChars: 4000000, rpmLimit: 2 },  
+      { id: 'gemini-2.5-computer-use-preview-10-2025', maxInputChars: 500000, rpmLimit: 5 },
+      { id: 'gemini-flash-lite-latest',          maxInputChars: 4000000, rpmLimit: 15 }, 
+      { id: 'gemini-3.1-flash-lite',             maxInputChars: 4000000, rpmLimit: 15 }, 
+      { id: 'gemma-4-31b-it',                    maxInputChars: 1000000, rpmLimit: 15 }  
     ]
   },
   groq: {
@@ -219,6 +226,7 @@ function buildDefaultChain(keys) {
         model:                 modelObj.id,
         maxInputChars:         modelObj.maxInputChars,
         max_completion_tokens: modelObj.max_completion_tokens,
+        rpmLimit:              modelObj.rpmLimit,
         apiKey:                keys[provider]
       });
     }
@@ -304,6 +312,7 @@ function buildChainFromSelection(selection, keys) {
       model:                 api_model_id,
       maxInputChars:         modelObj.maxInputChars,
       max_completion_tokens: modelObj.max_completion_tokens,
+      rpmLimit:              modelObj.rpmLimit,
       apiKey:                keys[provider]
     });
   }
@@ -857,6 +866,13 @@ async function callGeminiModel(apiKey, model, mode, systemInstruction, prompt, e
   const MODEL_PROFILES = {
     // Google Gemini
     'gemini-2.5-flash':         { tier: 'large', maxTokens: 1048576, maxChars: 4000000 },
+    'gemini-2.5-pro':           { tier: 'large', maxTokens: 1048576, maxChars: 4000000 },
+    'gemini-3.1-pro-preview':   { tier: 'large', maxTokens: 1000000, maxChars: 4000000 },
+    'gemini-3.5-flash':         { tier: 'large', maxTokens: 1048576, maxChars: 4000000 },
+    'gemini-2.5-flash-lite':    { tier: 'large', maxTokens: 1048576, maxChars: 4000000 },
+    'deep-research-pro-preview-12-2025': { tier: 'large', maxTokens: 1048576, maxChars: 4000000 },
+    'deep-research-preview-04-2026':     { tier: 'large', maxTokens: 1048576, maxChars: 4000000 },
+    'gemini-2.5-computer-use-preview-10-2025': { tier: 'large', maxTokens: 128000, maxChars: 500000 },
     'gemini-flash-lite-latest':  { tier: 'large', maxTokens: 1048576, maxChars: 4000000 },
     'gemini-3.1-flash-lite':     { tier: 'large', maxTokens: 1048576, maxChars: 4000000 },
     'google/gemini-3.1-flash-lite': { tier: 'large', maxTokens: 1048576, maxChars: 4000000 },
@@ -1005,18 +1021,19 @@ function extractTextFromContent(content) {
 
 // Llama de forma adaptativa a cualquier modelo y proveedor del catálogo
 async function callProviderModel(entry, mode, systemInstruction, prompt, enableGrounding = false) {
-  const { provider, model, apiKey, maxInputChars, max_completion_tokens } = entry;
+  const { provider, model, apiKey, maxInputChars, max_completion_tokens, rpmLimit } = entry;
 
-  // Proactive request spacing (throttling) to avoid exceeding provider RPM limits
+  // Proactive request spacing (throttling) to avoid exceeding provider/model RPM limits
   const providerData = PROVIDERS[provider];
-  if (providerData && providerData.rpmLimit) {
-    const minInterval = (60 / providerData.rpmLimit) * 1000;
+  const effectiveRpmLimit = rpmLimit || (providerData ? providerData.rpmLimit : null);
+  if (effectiveRpmLimit) {
+    const minInterval = (60 / effectiveRpmLimit) * 1000;
     const now = Date.now();
     const lastTime = lastRequestTimes[provider] || 0;
     const elapsed = now - lastTime;
     if (elapsed < minInterval) {
       const waitTime = minInterval - elapsed;
-      console.log(`    ⏳ Espaciando peticiones para ${provider.toUpperCase()}: esperando ${(waitTime / 1000).toFixed(1)}s para mantener límite de ${providerData.rpmLimit} RPM...`);
+      console.log(`    ⏳ Espaciando peticiones para ${provider.toUpperCase()}: esperando ${(waitTime / 1000).toFixed(1)}s para mantener límite de ${effectiveRpmLimit} RPM...`);
       await sleep(waitTime);
     }
   }

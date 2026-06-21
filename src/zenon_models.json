@@ -382,5 +382,109 @@
         "tier": "medium"
       }
     ]
+  },
+  {
+    "model_id": "gemini-2.5-pro",
+    "description": "Google Gemini 2.5 Pro — premium reasoning and coding frontier model, 2M context.",
+    "specialization": [
+      "code",
+      "reasoning",
+      "general"
+    ],
+    "providers": [
+      {
+        "provider": "gemini",
+        "api_model_id": "gemini-2.5-pro",
+        "maxInputChars": 4000000,
+        "tier": "large"
+      }
+    ]
+  },
+  {
+    "model_id": "gemini-3.1-pro-preview",
+    "description": "Google Gemini 3.1 Pro Preview — next-gen premium model with advanced thinking capabilities.",
+    "specialization": [
+      "code",
+      "reasoning",
+      "general"
+    ],
+    "providers": [
+      {
+        "provider": "gemini",
+        "api_model_id": "gemini-3.1-pro-preview",
+        "maxInputChars": 4000000,
+        "tier": "large"
+      }
+    ]
+  },
+  {
+    "model_id": "gemini-3.5-flash",
+    "description": "Google Gemini 3.5 Flash — next-gen fast model optimized for agents and speed.",
+    "specialization": [
+      "code",
+      "general"
+    ],
+    "providers": [
+      {
+        "provider": "gemini",
+        "api_model_id": "gemini-3.5-flash",
+        "maxInputChars": 4000000,
+        "tier": "large"
+      }
+    ]
+  },
+  {
+    "model_id": "gemini-2.5-flash-lite",
+    "description": "Google Gemini 2.5 Flash Lite — highly efficient model with standard large context.",
+    "specialization": [
+      "code",
+      "general"
+    ],
+    "providers": [
+      {
+        "provider": "gemini",
+        "api_model_id": "gemini-2.5-flash-lite",
+        "maxInputChars": 4000000,
+        "tier": "large"
+      }
+    ]
+  },
+  {
+    "model_id": "deep-research-pro",
+    "description": "Google Deep Research Pro — advanced agentic research model.",
+    "specialization": [
+      "reasoning",
+      "general"
+    ],
+    "providers": [
+      {
+        "provider": "gemini",
+        "api_model_id": "deep-research-pro-preview-12-2025",
+        "maxInputChars": 4000000,
+        "tier": "large"
+      },
+      {
+        "provider": "gemini",
+        "api_model_id": "deep-research-preview-04-2026",
+        "maxInputChars": 4000000,
+        "tier": "large"
+      }
+    ]
+  },
+  {
+    "model_id": "gemini-computer-use",
+    "description": "Google Gemini 2.5 Computer Use — specialized for visual and OS execution interaction.",
+    "specialization": [
+      "code",
+      "general"
+    ],
+    "providers": [
+      {
+        "provider": "gemini",
+        "api_model_id": "gemini-2.5-computer-use-preview-10-2025",
+        "maxInputChars": 500000,
+        "tier": "medium"
+      }
+    ]
   }
 ]
